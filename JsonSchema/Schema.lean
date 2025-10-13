@@ -62,50 +62,51 @@ mutual
     | SchemaDep : Schema → DependencySchema
 
   structure SchemaObject where
-    id : Option (LeanUri.URI ⊕ LeanUri.RelativeRef)
-    ref : Option (LeanUri.URI ⊕ LeanUri.RelativeRef)
-    --definitions : Option (Std.TreeMap.Raw String Schema)
-    type : Array JsonType
-    const : Option Json
-    enum : Option $ Array Json
+    id : Option (LeanUri.URI ⊕ LeanUri.RelativeRef) := none
+    ref : Option (LeanUri.URI ⊕ LeanUri.RelativeRef) := none
+    title : Option String := none
+    description : Option String := none
+    type : Array JsonType := #[.AnyType]
+    const : Option Json := none
+    enum : Option $ Array Json := none
 
-    maxLength : Option Nat
-    minLength : Option Nat
-    pattern : Option String
+    maxLength : Option Nat := none
+    minLength : Option Nat := none
+    pattern : Option String := none
 
-    maximum : Option Float
-    minimum : Option Float
-    exclusiveMaximum : Option Float
-    exclusiveMinimum : Option Float
-    multipleOf : Option Float
+    maximum : Option Float := none
+    minimum : Option Float := none
+    exclusiveMaximum : Option Float := none
+    exclusiveMinimum : Option Float := none
+    multipleOf : Option Float := none
 
-    uniqueItems : Bool
+    uniqueItems : Bool := false
 
-    required : Option (Array String)
-    properties : Option (Array (String × Schema))
-    patternProperties : Option (Array (String × Schema))
-    propertyNames : Option Schema
-    additionalProperties : Option Schema
-    maxProperties : Option Nat
-    minProperties : Option Nat
-    dependencies : Option (Array (String × DependencySchema))
+    required : Option (Array String) := none
+    properties : Option (Array (String × Schema)) := none
+    patternProperties : Option (Array (String × Schema)) := none
+    propertyNames : Option Schema := none
+    additionalProperties : Option Schema := none
+    maxProperties : Option Nat := none
+    minProperties : Option Nat := none
+    dependencies : Option (Array (String × DependencySchema)) := none
 
-    items : Option ItemsSchema
-    additionalItems : Option Schema
-    maxItems : Option Nat
-    minItems : Option Nat
-    contains : Option Schema
+    items : Option ItemsSchema := none
+    additionalItems : Option Schema := none
+    maxItems : Option Nat := none
+    minItems : Option Nat := none
+    contains : Option Schema := none
 
-    allOf : Option (Array Schema)
-    anyOf : Option (Array Schema)
-    oneOf : Option (Array Schema)
-    not : Option Schema
+    allOf : Option (Array Schema) := none
+    anyOf : Option (Array Schema) := none
+    oneOf : Option (Array Schema) := none
+    not : Option Schema := none
 
-    ifSchema : Option Schema
-    thenSchema : Option Schema
-    elseSchema : Option Schema
+    ifSchema : Option Schema := none
+    thenSchema : Option Schema := none
+    elseSchema : Option Schema := none
 
-    definitions : Option (Std.TreeMap.Raw String Schema)
+    definitions : Option (Std.TreeMap.Raw String Schema) := none
 end
 
 open JsonType
@@ -122,6 +123,9 @@ partial def schemaToJson (s : Schema) : Json :=
   | Schema.Object o => Id.run do
     let mut fields : List (String × Json) := []
     if let some id := o.id then fields := ("$id", Json.str (urirefToString id)) :: fields
+    if let some ref := o.ref then fields := ("$ref", Json.str (urirefToString ref)) :: fields
+    if let some title := o.title then fields := ("title", Json.str title) :: fields
+    if let some description := o.description then fields := ("description", Json.str description) :: fields
     if let some ref := o.ref then fields := ("$ref", Json.str (urirefToString ref)) :: fields
     if o.type != #[] then
       if o.type.size == 1 then
@@ -305,6 +309,8 @@ partial def schemaFromJson (j : Json) : Except String Schema := do
         LeanUri.parseReference)
       ref := ← parseOptionalField j "$ref" (fun val => val.getStr? >>=
         LeanUri.parseReference)
+      title := ← parseOptionalField j "title" (fun val => val.getStr?)
+      description := ← parseOptionalField j "description" (fun val => val.getStr?)
       type := ← parseType j
       const := ← parseOptionalField j "const" Except.ok
       enum := ← parseOptionalField j "enum" (fun val => val.getArr?)
