@@ -79,43 +79,144 @@ partial def jsonRepr (j : Json) (prec : Nat) : Format :=
 
 local instance : Repr Json := ⟨jsonRepr⟩
 
+def Test := Unit
+
+instance : FromJson Test where
+  fromJson? j := if j == Json.str "3" then .ok () else .error "Could not parse"
+
+
+def getConstantFromJsonTerm (j : Json) : Format :=
+  f!"if j == {reprPrec j 50} then" ++
+      .nestD (.line ++ repr (.ok () : Except String Unit)) ++
+      (.line ++ "else") ++ .nestD (
+        .line ++ repr (.error s!"Could not match constant {repr j}" : Except String Unit))
+
+def getConstantToJsonTerm (j : Json) : Format := repr j
+
+#eval (getConstantFromJsonTerm .null).pretty (width := 80) ==
+"if j == Json.null then
+  Except.ok ()
+else
+  Except.error \"Could not match constant Json.null\""
+
+#eval (getConstantToJsonTerm .null).pretty == "Json.null"
+
 def parseConstant (o : JsonSchema.SchemaObject) :
-    Except String (String × Format) := do
+    Except String TypeDefinition := do
   match o.const with
-  | some c => .ok ("Unit", repr c)
+  | some c => .ok (.mk "Unit" (getConstantFromJsonTerm c) (getConstantToJsonTerm c))
   | none => .error "Could not find constant"
 
-def parseRef (o : JsonSchema.SchemaObject) : Except String String :=
+def parseRef (o : JsonSchema.SchemaObject) : Except String TypeDefinition :=
   match o.ref with
-  | some _ => .ok "NotImplemented"
+  | some _ => .ok { typeDecl := "NotImplemented" }
   | none => .error "Could not find ref"
 
-def parseAnyType (types : Array JsonSchema.JsonType) : Except String String :=
-  if types.contains .AnyType then .ok "Json" else .error "Could not find any type"
+def parseAnyType (types : Array JsonSchema.JsonType) : Except String TypeDefinition :=
+  if types.contains .AnyType then .ok { typeDecl := "Json" } else .error "Could not find any type"
 
-def parseSimpleType (o : JsonSchema.SchemaObject) : Except String String :=
+#check (inferInstance : FromJson String).fromJson? 3 <|>
+  ((inferInstance : FromJson String).fromJson? 3)
+
+#check (.inl "string" : String ⊕ Int ⊕ Float)
+
+
+def depthToInlInr (inner : Format) (total : Nat) (current : Nat) : Format :=
+  if current == 0 then
+    ".inl" ++ .line ++ inner
+  else if current + 1 == total then
+    Nat.repeat (fun inner => ".inr" ++ .line ++ Std.Format.paren inner) (total - 1) inner
+  else
+    Nat.repeat (fun inner => ".inr" ++ .line ++ Std.Format.paren inner) current
+      (".inl" ++ .line ++ Std.Format.paren inner)
+
+#eval (Std.Format.nestD (.group (depthToInlInr "hi" 2 1))).pretty == ".inr (hi)"
+
+/-- Get the `fromJson? j := {?}` term for a sum of types (not including null) -/
+def getFromJsonListSum (xs : List JsonSchema.JsonType) : Format :=
+  Std.Format.joinSep (xs.zipIdx.map (fun (x, i) =>
+    let inner := s!"(inferInstance : FromJson {jsonTypeToLean x}).fromJson? j"
+    let f : Format := .group (.nestD ("(fun x =>" ++ Std.Format.line ++ depthToInlInr "x" xs.length i ++ ")"))
+    Std.Format.group (.nestD (f ++ Std.Format.line ++ "<$>" ++ Std.Format.line ++ "(" ++ inner ++ ")"
+      ))
+  )) (" <|>" ++ .line)
+
+#eval (getFromJsonListSum [.NumberType, .IntegerType]).pretty == "(fun x => .inl x) <$> ((inferInstance : FromJson Float).fromJson? j) <|>
+(fun x => .inr (x)) <$> ((inferInstance : FromJson Int).fromJson? j)"
+
+def getToJsonListSum (length : Nat) : Format :=
+  .group ("match x with\n" ++ Std.Format.joinSep ((List.range length).map (fun i =>
+    let pattern : Format := .group (.nestD (depthToInlInr "x" length i))
+    "| " ++ pattern ++ " => toJson x"
+  )) "\n")
+
+#eval println! (getToJsonListSum 4).pretty (width := 120)
+
+def Test' := String ⊕ Int
+
+instance : ToJson Test' where
+  toJson x := match x with
+  | .inl x => toJson x
+  | .inr x => toJson x
+
+#check Option.toJson
+
+def parseSimpleType (o : JsonSchema.SchemaObject) : Except String TypeDefinition :=
   parseAnyType o.type <|>
   match (o.type.qsort (lt := fun x y => (compare x y).isLT)).toList with
-  | [x] => .ok (jsonTypeToLean x)
-  | [.NullType, x] => .ok ("Option " ++ jsonTypeToLean x)
+  -- Type classes can be derived
+  | [x] => .ok { typeDecl := jsonTypeToLean x }
+  | [.NullType, x] => .ok { typeDecl := "Option " ++ jsonTypeToLean x }
   | [] => .error "Type list is empty"
+  -- Type classes can probably not be derived
   | .NullType::xs =>
-    .ok ("Option (" ++ (String.intercalate " ⊕ " (xs.map jsonTypeToLean)) ++ ")")
-  | xs => .ok (String.intercalate " ⊕ " (xs.map jsonTypeToLean))
+    .ok {
+      typeDecl := "Option (" ++ (String.intercalate " ⊕ " (xs.map jsonTypeToLean)) ++ ")"
+      fromJsonImpl := Std.Format.text "Option.fromJson?" ++ .line ++
+        Std.Format.paren (getFromJsonListSum xs)
+      toJsonImpl := Std.Format.text "@Option.toJson" ++ .line ++ "_" ++
+        .line ++ f!"⟨fun x => {getToJsonListSum xs.length}⟩" ++
+        .line ++ (Std.Format.text "x"),
+    }
+  | xs => .ok {
+      typeDecl := String.intercalate " ⊕ " (xs.map jsonTypeToLean)
+      fromJsonImpl := getFromJsonListSum xs
+      toJsonImpl := getToJsonListSum xs.length
+  }
+
+#eval ((
+  parseSimpleType { type := #[.NullType, .StringType, .IntegerType] }
+).toOption.get!.toJsonImpl.get!).pretty == "@Option.toJson
+_
+⟨fun x => match x with
+| .inl x => toJson x
+| .inr (x) => toJson x⟩
+x"
 
 /-- Inline types such as String ⊕ Int do not need complicated definitions.
 -/
-def parseInline (s : JsonSchema.Schema) : Except String Format :=
+def parseInline (s : JsonSchema.Schema) : Except String TypeDefinition :=
   match s with
-  | .Boolean b => pure (getBoolType b)
+  | .Boolean b => pure { typeDecl := getBoolType b }
   | .Object o => do
   isSimple o
   parseRef o <|>
-  (parseConstant o <&> Prod.fst) <|>
+  parseConstant o <|>
   parseSimpleType o
 
-def parseInlineAbbrev (s : JsonSchema.Schema) (name : String) : Except String Format :=
+def parseInlineAbbrev (s : JsonSchema.Schema) (name : String) :
+    Except String TypeDefinition :=
   parseInline s <&> fun form =>
-    .group <| .nest 2 (f!"abbrev {name} :=" ++ .line ++ form)
+    {
+      typeDecl := .group <| .nest 2 (f!"abbrev {name} :=" ++ .line ++ form.typeDecl)
+      fromJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
+        .nestD ("instance : FromJson {name} where\n" ++
+          .group (.nestD "fromJson? j :=" ++ .line ++ fromJsonImpl)
+        )
+      toJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
+        .nestD ("instance : ToJson {name} where\n" ++
+          .group (.nestD "toJson x :=" ++ .line ++ fromJsonImpl)
+        )
+    }
 
 end JsonSchema.CodeGen

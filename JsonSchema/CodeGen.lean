@@ -47,19 +47,46 @@ namespace JsonSchema.CodeGen
 
 open Lean
 
-/-- Main schema to format conversion -/
-def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
-    (config : Config := {}) : Except String Format := do
+/-- Main schema to TypeDefinition conversion -/
+def schemaToTypeDef (s : JsonSchema.Schema) (name : String)
+    (config : Config := {}) : Except String TypeDefinition := do
   -- We are going to ignore refs for now, which we will fill in
   -- by providing all the name ahead of time in the config,
   -- and then parsing in the correct order (+ mutual types)
-  let name := config.sanitizeName typeName
   parseInlineAbbrev s name
 
+/-- Main schema to TypeDefinition conversion -/
+def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
+    (config : Config := {}) : Except String Format := do
+  let name := config.sanitizeName typeName
+  let typeDef ← schemaToTypeDef s name config
+  if config.generateInstances then
+    let mut deriveInfo : Array Format := #[]
+    let mut instances : Array Format := #[]
+    if let some fromImpl := typeDef.fromJsonImpl then
+      instances := instances.push fromImpl
+    else
+      deriveInfo := deriveInfo.push "FromJson"
+    if let some toImpl := typeDef.toJsonImpl then
+      instances := instances.push toImpl
+      deriveInfo := deriveInfo.push "FromJson"
+    let deriveStr : Format := if deriveInfo.isEmpty then
+      .nil
+    else
+      .group (.nestD (
+        "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
+      ))
+    let instanceStr : Format := Std.Format.prefixJoin "\n" instances.toList
+
+    return typeDef.typeDecl ++ deriveStr ++ instanceStr
+  return typeDef.typeDecl
+
+
 /-- Main function to convert a Schema to String (not Format, to simplify) -/
-def schemaToString (s : JsonSchema.Schema) (typeName : String) : String :=
-  match schemaToFormat s typeName with
-  | .ok s => s.pretty
-  | .error e => e
+def schemaToString (s : JsonSchema.Schema) (typeName : String)
+    (config : Config := {}) : String :=
+  match (schemaToFormat s typeName config) with
+  | .ok f => f.pretty
+  | .error e => s!"ERROR: {e}"
 
 end JsonSchema.CodeGen

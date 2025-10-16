@@ -1,5 +1,17 @@
 namespace JsonSchema.CodeGen
 
+open Lean
+
+/-- A complete type definition including the type declaration and optional JSON instances -/
+structure TypeDefinition where
+  /-- The main type declaration (structure, inductive, or abbrev) -/
+  typeDecl : Std.Format
+  /-- Optional FromJson instance implementation -/
+  fromJsonImpl : Option Std.Format := none
+  /-- Optional ToJson instance implementation -/
+  toJsonImpl : Option Std.Format := none
+deriving Inhabited
+
 /-- Default name sanitization: replace invalid characters, handle keywords -/
 def defaultSanitizeName (name : String) : String :=
   -- Replace < with "Of" and > with "" to get A<T> → AOfT
@@ -22,6 +34,8 @@ structure Config where
   sanitizeName : String → String := defaultSanitizeName
   /-- Indentation string -/
   indent : String := "  "
+  /-- Whether to generate FromJson/ToJson instances -/
+  generateInstances : Bool := false
 
 /-- Capitalize first letter -/
 def capitalize (s : String) : String :=
