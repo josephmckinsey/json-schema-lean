@@ -208,7 +208,11 @@ def parseInlineAbbrev (s : JsonSchema.Schema) (name : String) :
     Except String TypeDefinition :=
   parseInline s <&> fun form =>
     {
-      typeDecl := .group <| .nest 2 (f!"abbrev {name} :=" ++ .line ++ form.typeDecl)
+      typeDecl := s.getDoc ++ (
+        Std.Format.group <|
+          .nest 2 (
+            f!"abbrev {name} :=" ++ .line ++ form.typeDecl
+            ))
       fromJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
         .nestD ("instance : FromJson {name} where\n" ++
           .group (.nestD "fromJson? j :=" ++ .line ++ fromJsonImpl)
