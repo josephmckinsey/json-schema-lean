@@ -93,14 +93,6 @@ def getConstantFromJsonTerm (j : Json) : Format :=
 
 def getConstantToJsonTerm (j : Json) : Format := repr j
 
-#eval (getConstantFromJsonTerm .null).pretty (width := 80) ==
-"if j == Json.null then
-  Except.ok ()
-else
-  Except.error \"Could not match constant Json.null\""
-
-#eval (getConstantToJsonTerm .null).pretty == "Json.null"
-
 def parseConstant (o : JsonSchema.SchemaObject) :
     Except String TypeDefinition := do
   match o.const with
@@ -130,8 +122,6 @@ def depthToInlInr (inner : Format) (total : Nat) (current : Nat) : Format :=
     Nat.repeat (fun inner => ".inr" ++ .line ++ Std.Format.paren inner) current
       (".inl" ++ .line ++ Std.Format.paren inner)
 
-#eval (Std.Format.nestD (.group (depthToInlInr "hi" 2 1))).pretty == ".inr (hi)"
-
 /-- Get the `fromJson? j := {?}` term for a sum of types (not including null) -/
 def getFromJsonListSum (xs : List JsonSchema.JsonType) : Format :=
   Std.Format.joinSep (xs.zipIdx.map (fun (x, i) =>
@@ -141,16 +131,11 @@ def getFromJsonListSum (xs : List JsonSchema.JsonType) : Format :=
       ))
   )) (" <|>" ++ .line)
 
-#eval (getFromJsonListSum [.NumberType, .IntegerType]).pretty == "(fun x => .inl x) <$> ((inferInstance : FromJson Float).fromJson? j) <|>
-(fun x => .inr (x)) <$> ((inferInstance : FromJson Int).fromJson? j)"
-
 def getToJsonListSum (length : Nat) : Format :=
   .group ("match x with\n" ++ Std.Format.joinSep ((List.range length).map (fun i =>
     let pattern : Format := .group (.nestD (depthToInlInr "x" length i))
     "| " ++ pattern ++ " => toJson x"
   )) "\n")
-
-#eval println! (getToJsonListSum 4).pretty (width := 120)
 
 def Test' := String ⊕ Int
 
@@ -183,15 +168,6 @@ def parseSimpleType (o : JsonSchema.SchemaObject) : Except String TypeDefinition
       fromJsonImpl := getFromJsonListSum xs
       toJsonImpl := getToJsonListSum xs.length
   }
-
-#eval ((
-  parseSimpleType { type := #[.NullType, .StringType, .IntegerType] }
-).toOption.get!.toJsonImpl.get!).pretty == "@Option.toJson
-_
-⟨fun x => match x with
-| .inl x => toJson x
-| .inr (x) => toJson x⟩
-x"
 
 /-- Inline types such as String ⊕ Int do not need complicated definitions.
 -/

@@ -113,8 +113,45 @@ def inductiveTests : TestM Unit := testFunction "structureTests" do
 def otherTests : TestM Unit := testFunction "other tests" do
   testEq "Ref" (schemaToString testRef "TestReference") testRefString
 
+def constantTests : TestM Unit := testFunction "constant tests" do
+  testEq "getConstantFromJsonTerm null"
+    ((getConstantFromJsonTerm .null).pretty (width := 80))
+    "if j == Json.null then\n  Except.ok ()\nelse\n  Except.error \"Could not match constant Json.null\""
+  testEq "getConstantToJsonTerm null"
+    ((getConstantToJsonTerm .null).pretty)
+    "Json.null"
+
+def depthTests : TestM Unit := testFunction "depth tests" do
+  testEq "depthToInlInr"
+    ((Std.Format.nestD (.group (depthToInlInr "hi" 2 1))).pretty)
+    ".inr (hi)"
+
+def fromJsonListSumTests : TestM Unit := testFunction "fromJson list sum tests" do
+  testEq "getFromJsonListSum NumberType IntegerType"
+    ((getFromJsonListSum [.NumberType, .IntegerType]).pretty)
+    "(fun x => .inl x) <$> ((inferInstance : FromJson Float).fromJson? j) <|>\n(fun x => .inr (x)) <$> ((inferInstance : FromJson Int).fromJson? j)"
+
+def parseSimpleTypeTests : TestM Unit := testFunction "parseSimpleType tests" do
+  testEq "parseSimpleType with null, string, int"
+    (((parseSimpleType { type := #[.NullType, .StringType, .IntegerType] }).toOption.get!.toJsonImpl.get!).pretty)
+    "@Option.toJson\n_\n⟨fun x => match x with\n| .inl x => toJson x\n| .inr (x) => toJson x⟩\nx"
+
+def descriptionTests : TestM Unit := testFunction "description tests" do
+  let simpleSchemaWithDesc : JsonSchema.Schema := .Object {
+    type := #[.StringType]
+    description := some "A simple string type"
+  }
+  testEq "Simple type with description"
+    (schemaToString simpleSchemaWithDesc "MyString")
+    "/-- A simple string type -/\nabbrev MyString := String"
+
 #eval TestM.run do
   simpleTest
+  constantTests
+  depthTests
+  fromJsonListSumTests
+  parseSimpleTypeTests
+  descriptionTests
   printSummary
 
 def hmm := Option (String ⊕ Int)
