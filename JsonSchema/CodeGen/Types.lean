@@ -75,12 +75,6 @@ partial def jsonRepr (j : Json) (prec : Nat) : Format :=
 
 local instance : Repr Json := ⟨jsonRepr⟩
 
-def Test := Unit
-
-instance : FromJson Test where
-  fromJson? j := if j == Json.str "3" then .ok () else .error "Could not parse"
-
-
 def getConstantFromJsonTerm (j : Json) : Format :=
   f!"if j == {reprPrec j 50} then" ++
       .nestD (.line ++ repr (.ok () : Except String Unit)) ++
@@ -92,7 +86,7 @@ def getConstantToJsonTerm (j : Json) : Format := repr j
 def parseConstant (o : JsonSchema.SchemaObject) :
     Except String TypeDefinition := do
   match o.const with
-  | some c => .ok (.mk "Unit" (getConstantFromJsonTerm c) (getConstantToJsonTerm c))
+  | some c => .ok (.mk "Unit" (getConstantFromJsonTerm c) (getConstantToJsonTerm c) [])
   | none => .error "Could not find constant"
 
 def parseRef (o : JsonSchema.SchemaObject) : Except String TypeDefinition :=
@@ -102,12 +96,6 @@ def parseRef (o : JsonSchema.SchemaObject) : Except String TypeDefinition :=
 
 def parseAnyType (types : Array JsonSchema.JsonType) : Except String TypeDefinition :=
   if types.contains .AnyType then .ok { typeDecl := "Json" } else .error "Could not find any type"
-
-#check (inferInstance : FromJson String).fromJson? 3 <|>
-  ((inferInstance : FromJson String).fromJson? 3)
-
-#check (.inl "string" : String ⊕ Int ⊕ Float)
-
 
 def depthToInlInr (inner : Format) (total : Nat) (current : Nat) : Format :=
   if current == 0 then
@@ -133,48 +121,48 @@ def getToJsonListSum (length : Nat) : Format :=
     "| " ++ pattern ++ " => toJson x"
   )) "\n")
 
-def Test' := String ⊕ Int
-
-instance : ToJson Test' where
-  toJson x := match x with
-  | .inl x => toJson x
-  | .inr x => toJson x
-
-#check Option.toJson
-
-def parseSimpleType (o : JsonSchema.SchemaObject) : Except String TypeDefinition :=
+def parseSimpleType (o : JsonSchema.SchemaObject) (prec : Nat := 0) : Except String TypeDefinition :=
   parseAnyType o.type <|>
   match (o.type.qsort (lt := fun x y => (compare x y).isLT)).toList with
   -- Type classes can be derived
   | [x] => .ok { typeDecl := jsonTypeToLean x }
-  | [.NullType, x] => .ok { typeDecl := "Option " ++ jsonTypeToLean x }
+  | [.NullType, x] =>
+    let inner := jsonTypeToLean x
+    let typeDecl := if prec >= max_prec then ("(Option " ++ inner ++ ")") else "Option " ++ inner
+    .ok { typeDecl := typeDecl }
   | [] => .error "Type list is empty"
   -- Type classes can probably not be derived
   | .NullType::xs =>
+    let sumType := String.intercalate " ⊕ " (xs.map jsonTypeToLean)
+    let typeDecl := if prec >= max_prec then ("(Option (" ++ sumType ++ "))") else "Option (" ++ sumType ++ ")"
     .ok {
-      typeDecl := "Option (" ++ (String.intercalate " ⊕ " (xs.map jsonTypeToLean)) ++ ")"
+      typeDecl := typeDecl
       fromJsonImpl := Std.Format.text "Option.fromJson?" ++ .line ++
         Std.Format.paren (getFromJsonListSum xs)
       toJsonImpl := Std.Format.text "@Option.toJson" ++ .line ++ "_" ++
         .line ++ f!"⟨fun x => {getToJsonListSum xs.length}⟩" ++
         .line ++ (Std.Format.text "x"),
     }
-  | xs => .ok {
-      typeDecl := String.intercalate " ⊕ " (xs.map jsonTypeToLean)
+  | xs =>
+    let sumType := String.intercalate " ⊕ " (xs.map jsonTypeToLean)
+    let typeDecl := if prec >= max_prec then "(" ++ sumType ++ ")" else sumType
+    .ok {
+      typeDecl := typeDecl
       fromJsonImpl := getFromJsonListSum xs
       toJsonImpl := getToJsonListSum xs.length
-  }
+    }
 
 /-- Inline types such as String ⊕ Int do not need complicated definitions.
+    The prec parameter determines whether to add parentheses for function application.
 -/
-def parseInline (s : JsonSchema.Schema) : Except String TypeDefinition :=
+def parseInline (s : JsonSchema.Schema) (prec : Nat := 0) : Except String TypeDefinition :=
   match s with
   | .Boolean b => pure { typeDecl := getBoolType b }
   | .Object o => do
   isSimple o
   parseRef o <|>
   parseConstant o <|>
-  parseSimpleType o
+  parseSimpleType o prec
 
 def parseInlineAbbrev (s : JsonSchema.Schema) (name : String) :
     Except String TypeDefinition :=

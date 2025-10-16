@@ -94,12 +94,66 @@ def simpleTest : TestM Unit := testFunction "abbreviation tests" do
   testEq "NullableSimpleSum" (schemaToString testNullableSum "NullableSimpleSum")
     r#"abbrev NullableSimpleSum := Option (String ⊕ Int)"#
 
+def testStructWithOptionalSum : JsonSchema.Schema := .Object {
+  type := #[.ObjectType]
+  required := some #["id"]
+  properties := some #[
+    ("id", .Object { type := #[.IntegerType] }),
+    ("value", .Object { type := #[.StringType, .NumberType] })
+  ]
+}
+
+def testNestedStructSchema : JsonSchema.Schema := .Object {
+  type := #[.ObjectType]
+  required := some #["name", "address"]
+  properties := some #[
+    ("name", .Object { type := #[.StringType] }),
+    ("address", .Object {
+      type := #[.ObjectType]
+      required := some #["street", "city"]
+      properties := some #[
+        ("street", .Object { type := #[.StringType] }),
+        ("city", .Object { type := #[.StringType] }),
+        ("zipCode", .Object { type := #[.StringType] })
+      ]
+    })
+  ]
+}
+
+def testAllOptionalFields : JsonSchema.Schema := .Object {
+  type := #[.ObjectType]
+  properties := some #[
+    ("field1", .Object { type := #[.StringType] }),
+    ("field2", .Object { type := #[.IntegerType] })
+  ]
+}
+
 def structureTests : TestM Unit := testFunction "structureTests" do
   testEq "Person" (schemaToString testPersonSchema "Person")
     r#"structure Person where
   name : String
   age : Int
   email : Option String"#
+
+  testEq "Struct with optional sum type" (schemaToString testStructWithOptionalSum "Record")
+    r#"structure Record where
+  id : Int
+  value : Option (String ⊕ Float)"#
+
+  testEq "Nested struct" (schemaToString testNestedStructSchema "Person")
+    r#"structure PersonAddress where
+  street : String
+  city : String
+  zipCode : Option String
+
+structure Person where
+  name : String
+  address : PersonAddress"#
+
+  testEq "All optional fields" (schemaToString testAllOptionalFields "OptionalData")
+    r#"structure OptionalData where
+  field1 : Option String
+  field2 : Option Int"#
 
 def inductiveTests : TestM Unit := testFunction "structureTests" do
   testEq "Enum" (schemaToString testEnum "TestEnum") testEnumString
@@ -147,6 +201,7 @@ def descriptionTests : TestM Unit := testFunction "description tests" do
 
 #eval TestM.run do
   simpleTest
+  structureTests
   constantTests
   depthTests
   fromJsonListSumTests
