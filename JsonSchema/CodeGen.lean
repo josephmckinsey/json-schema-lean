@@ -43,12 +43,168 @@ This avoids hygiene issues and makes it easy to add comments/formatting.
 
 namespace CodeGen
 
-def schemaToFormat (s : JsonSchema.Schema) (typeName : String) : Format :=
-  .nil
+/-- Default name sanitization: replace invalid characters, handle keywords -/
+def defaultSanitizeName (name : String) : String :=
+  -- Replace < with "Of" and > with "" to get A<T> → AOfT
+  let withOf := name.replace "<" "Of" |>.replace ">" ""
+  let cleaned := withOf.toList.map fun c =>
+    if c.isAlphanum then c
+    else if c == '_' then c
+    else '_'
+  let result := String.mk cleaned
+  -- Basic keyword avoidance (add more as needed)
+  if ["def", "theorem", "structure", "inductive", "where", "match", "if", "then", "else"].contains result
+  then result ++ "_"
+  else if result.isEmpty || result.front.isDigit
+  then "t_" ++ result  -- Prepend if starts with digit or empty
+  else result
+
+/-- Configuration for code generation -/
+structure Config where
+  /-- How to sanitize names to valid Lean identifiers -/
+  sanitizeName : String → String := defaultSanitizeName
+  /-- Indentation string -/
+  indent : String := "  "
+
+/-- Capitalize first letter -/
+def capitalize (s : String) : String :=
+  if s.isEmpty then s
+  else s.take 1 |>.toUpper ++ s.drop 1
+
+/-- Create a doc comment from a description -/
+def mkDocComment (desc : String) : Format :=
+  .text s!"/-- {desc} -/"
+
+/-- Get the Lean type name for a single JsonType -/
+def jsonTypeToLean : JsonSchema.JsonType → String
+  | .StringType => "String"
+  | .IntegerType => "Int"
+  | .NumberType => "Float"
+  | .BooleanType => "Bool"
+  | .NullType => "Unit"
+  | .ObjectType => "Json"  -- Generic fallback
+  | .ArrayType => "Array Json"  -- Generic fallback
+  | .AnyType => "Json"
+
+/-- Extract type name from a schema (from title or ref) -/
+def extractTypeName? (s : JsonSchema.Schema) : Option String :=
+  match s with
+  | .Boolean _ => none
+  | .Object obj =>
+    obj.title <|> (obj.ref >>= fun ref =>
+      match ref with
+      | .inr relRef =>
+        -- Extract last component from #/definitions/TypeName
+        let parts := relRef.fragment.getD "" |>.splitOn "/"
+        parts.getLast?
+      | .inl _ => none
+    )
+
+/-- Determine if a schema represents an optional type (has null in types) -/
+def hasNullType (types : Array JsonSchema.JsonType) : Bool :=
+  types.contains .NullType
+
+/-- Get non-null types from type array -/
+def nonNullTypes (types : Array JsonSchema.JsonType) : Array JsonSchema.JsonType :=
+  types.filter (· != .NullType)
+
+
+
+
+def getBoolType (b : Bool) : String :=
+  if b then "Unit" else "Empty"
+
+def isSimple (o : JsonSchema.SchemaObject) : Except String Unit := do
+  if o.const.isSome then return -- constants are always simple
+  if o.ref.isSome then return -- Refs are always simple
+  if o.allOf.isSome then .error "allOf is not simple"
+  if o.anyOf.isSome then .error "anyOf is not simple"
+  if o.oneOf.isSome then .error "oneOf is not simple"
+  if o.type.contains .ObjectType then .error "object type possible"
+  -- These don't necessary make a type complex, but it
+  -- probably should be a struct or inductive if these exist.
+  if o.contains.isSome then .error "contains is not simple"
+  if o.not.isSome then .error "not is not simple"
+  if o.ifSchema.isSome then .error "if is not simple"
+  if o.thenSchema.isSome then .error "then is not simple"
+  if o.elseSchema.isSome then .error "else is not simple"
+  if o.dependencies.isSome then .error "dependencies is not simple"
+  -- These can't reay be inlined if they exist
+  if o.enum.isSome then .error "enum is not simple"
+  if o.pattern.isSome then .error "pattern is not simple"
+
+
+partial def jsonRepr (j : Json) (_ : Nat) : Format :=
+  let subRepr : Repr Json := ⟨jsonRepr⟩
+  match j with
+  | .arr x => Format.nest 2  <| .text "Lean.Json.arr <|" ++ .line ++
+    (@repr _ (@Array.instRepr _ subRepr) x)
+  | .obj kvPairs => Format.nest 2 <| .text "Lean.Json.obj <|" ++ .line ++
+    (@repr _ (@Std.TreeMap.Raw.instRepr _ _ _ _ subRepr) kvPairs)
+  | .str s => Format.nest 2 <| "Lean.Json.str <|" ++ .line ++ repr s
+  | .num n => Format.nest 2 <| "Lean.Json.num <|" ++ .line ++ repr n
+  | .null => "Lean.Json.null"
+  | .bool b => Format.nest 2 <| "Lean.Json.bool " ++ repr b
+
+local instance : Repr Json := ⟨jsonRepr⟩
+
+#eval Json.mkObj [("what", .null)]
+
+def parseConstant (o : JsonSchema.SchemaObject) :
+    Except String (String × Format) := do
+  match o.const with
+  | some c => .ok ("Unit", repr c)
+  | none => .error "Could not find constant"
+
+def parseRef (o : JsonSchema.SchemaObject) : Except String String :=
+  match o.ref with
+  | some _ => .ok "NotImplemented"
+  | none => .error "Could not find ref"
+
+def parseAnyType (types : Array JsonSchema.JsonType) : Except String String :=
+  if types.contains .AnyType then .ok "Json" else .error "Could not find any type"
+
+def parseSimpleType (o : JsonSchema.SchemaObject) : Except String String :=
+  parseAnyType o.type <|>
+  match (o.type.mergeSort (le := fun x y => (compare x y).isLE)).toList with
+  | [x] => .ok (jsonTypeToLean x)
+  | [.NullType, x] => .ok ("Option " ++ jsonTypeToLean x)
+  | [] => .error "Type list is empty"
+  | .NullType::xs =>
+    .ok ("Option (" ++ (String.intercalate " ⊕ " (xs.map jsonTypeToLean)))
+  | xs => .ok (String.intercalate " ⊕ " (xs.map jsonTypeToLean))
+
+/-- Inline types such as String ⊕ Int do not need complicated definitions.
+-/
+def parseInline (s : JsonSchema.Schema) : Except String Format :=
+  match s with
+  | .Boolean b => pure (getBoolType b)
+  | .Object o => do
+  isSimple o
+  parseRef o <|>
+  (parseConstant o <&> Prod.fst) <|>
+  parseSimpleType o
+
+def parseInlineAbbrev (s : JsonSchema.Schema) (name : String) : Except String Format :=
+  parseInline s <&> fun form =>
+    .group <| .nest 2 (f!"abbrev {name} :=" ++ .line ++ form)
+
+
+/-- Main schema to format conversion -/
+def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
+    (config : Config := {}) : Except String Format := do
+  -- We are going to ignore refs for now, which we will fill in
+  -- by providing all the name ahead of time in the config,
+  -- and then parsing in the correct order (+ mutual types)
+  /- test -/
+  let name := config.sanitizeName typeName
+  parseInlineAbbrev s name
 
 /-- Main function to convert a Schema to String (not Format, to simplify) -/
 def schemaToString (s : JsonSchema.Schema) (typeName : String) : String :=
-  (schemaToFormat s typeName).pretty
+  match schemaToFormat s typeName with
+  | .ok s => s.pretty
+  | .error e => e
 
 end CodeGen
 
@@ -122,7 +278,7 @@ def testRefString := r#"inductive AOfT where
   | hi
   | oh_boy_nope
 
-abbrev TestReference := A"#
+abbrev TestReference := AofT"#
 
 namespace Test
 

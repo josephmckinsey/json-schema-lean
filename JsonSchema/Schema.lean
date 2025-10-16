@@ -12,15 +12,15 @@ open Lean
 open Json
 
 inductive JsonType where
+  | NullType
   | StringType
   | NumberType
   | IntegerType
   | BooleanType
   | ObjectType
   | ArrayType
-  | NullType
   | AnyType
-  deriving Inhabited, BEq, Repr
+  deriving Inhabited, BEq, Repr, Ord
 
 instance : ToString JsonType where
   toString jt := match jt with
