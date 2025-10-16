@@ -6,10 +6,6 @@ namespace JsonSchema.CodeGen
 
 open Lean
 
-/-- Create a doc comment from a description -/
-def mkDocComment (desc : String) : Format :=
-  .text s!"/-- {desc} -/"
-
 /-- Get the Lean type name for a single JsonType -/
 def jsonTypeToLean : JsonSchema.JsonType → String
   | .StringType => "String"
