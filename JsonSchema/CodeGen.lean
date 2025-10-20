@@ -61,7 +61,19 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String)
   -- and then parsing in the correct order (+ mutual types)
   parseInlineAbbrev s name <|>
   (match s with
-   | .Object obj => objectToStructure obj name (schemaToTypeDef (config := config)) config
+   | .Object obj =>
+     -- Try enum first
+     if let some enum := obj.enum then
+       enumToInductive enum name config
+     -- Then try oneOf
+     else if let some oneOf := obj.oneOf then
+       oneOfToInductive oneOf name (schemaToTypeDef (config := config)) config
+     -- Then try anyOf (treated same as oneOf for now)
+     else if let some anyOf := obj.anyOf then
+       anyOfToInductive anyOf name (schemaToTypeDef (config := config)) config
+     -- Finally try object/structure
+     else
+       objectToStructure obj name (schemaToTypeDef (config := config)) config
    | _ => .error "Cannot convert boolean schema to structure")
 
 /-- Main schema to TypeDefinition conversion -/
@@ -72,30 +84,37 @@ def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
 
   -- Flatten all nested dependencies
   let allDeps := flattenDependencies typeDef
-  let depFormats := allDeps.map (·.typeDecl)
 
   if config.generateInstances then
-    let mut deriveInfo : Array Format := #[]
-    let mut instances : Array Format := #[]
-    if let some fromImpl := typeDef.fromJsonImpl then
-      instances := instances.push fromImpl
-    else
-      deriveInfo := deriveInfo.push "FromJson"
-    if let some toImpl := typeDef.toJsonImpl then
-      instances := instances.push toImpl
-      deriveInfo := deriveInfo.push "FromJson"
-    let deriveStr : Format := if deriveInfo.isEmpty then
-      .nil
-    else "\n" ++ .group (.nestD (
-        "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
-      ))
-    let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
-    let mainFormat := typeDef.typeDecl ++ deriveStr ++ instanceStr
+    -- Helper function to format a TypeDefinition with its instances
+    let formatWithInstances (td : TypeDefinition) : Format := Id.run do
+      let mut deriveInfo : Array Format := #[]
+      let mut instances : Array Format := #[]
+      if let some fromImpl := td.fromJsonImpl then
+        instances := instances.push fromImpl
+      else
+        deriveInfo := deriveInfo.push "FromJson"
+      if let some toImpl := td.toJsonImpl then
+        instances := instances.push toImpl
+      else
+        deriveInfo := deriveInfo.push "ToJson"
+      let deriveStr : Format := if deriveInfo.isEmpty then
+        .nil
+      else "\n" ++ .group (.nestD (
+          "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
+        ))
+      let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
+      return td.typeDecl ++ deriveStr ++ instanceStr
+
+    -- Format all dependencies with their instances
+    let depFormats := allDeps.map formatWithInstances
+    let mainFormat := formatWithInstances typeDef
 
     -- Prepend dependencies before main definition
     return Std.Format.joinSep (depFormats ++ [mainFormat]) "\n\n"
 
-  -- Prepend dependencies before main definition
+  -- Prepend dependencies before main definition (without instances)
+  let depFormats := allDeps.map (·.typeDecl)
   return Std.Format.joinSep (depFormats ++ [typeDef.typeDecl]) "\n\n"
 
 

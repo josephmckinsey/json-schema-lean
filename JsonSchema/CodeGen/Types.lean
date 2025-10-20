@@ -73,7 +73,7 @@ partial def jsonRepr (j : Json) (prec : Nat) : Format :=
   | .null => "Json.null"
   | .bool b => Repr.addAppParen ("Json.bool " ++ repr b) prec
 
-local instance : Repr Json := ⟨jsonRepr⟩
+scoped instance : Repr Json := ⟨jsonRepr⟩
 
 def getConstantFromJsonTerm (j : Json) : Format :=
   f!"if j == {reprPrec j 50} then" ++
@@ -86,7 +86,11 @@ def getConstantToJsonTerm (j : Json) : Format := repr j
 def parseConstant (o : JsonSchema.SchemaObject) :
     Except String TypeDefinition := do
   match o.const with
-  | some c => .ok (.mk "Unit" (getConstantFromJsonTerm c) (getConstantToJsonTerm c) [])
+  | some c => .ok {
+    typeDecl := "Unit"
+    fromJsonImpl := getConstantFromJsonTerm c
+    toJsonImpl := getConstantToJsonTerm c
+  }
   | none => .error "Could not find constant"
 
 def parseRef (o : JsonSchema.SchemaObject) : Except String TypeDefinition :=
@@ -152,23 +156,98 @@ def parseSimpleType (o : JsonSchema.SchemaObject) (prec : Nat := 0) : Except Str
       toJsonImpl := getToJsonListSum xs.length
     }
 
+/-- Try to parse anyOf as an inlineable sum type.
+    This succeeds if all variants can be parsed with the recurse function. -/
+def parseInlineableAnyOf (variants : Array JsonSchema.Schema)
+    (recurse : JsonSchema.Schema → Nat → Except String TypeDefinition)
+    (prec : Nat := 0) : Except String TypeDefinition := do
+  -- Try to parse each variant as an inline type, collecting descriptions
+  let mut typeDefsList : List TypeDefinition := []
+  let mut descriptionList : List (Option String) := []
+  for variant in variants do
+    let typeDef ← recurse variant max_prec
+    typeDefsList := typeDef :: typeDefsList
+    -- Extract description from variant schema
+    let desc := match variant with
+      | .Boolean _ => none
+      | .Object obj => obj.description
+    descriptionList := desc :: descriptionList
+
+  let typeDefs := typeDefsList.reverse
+  let descriptions := descriptionList.reverse
+
+  -- Build sum type from all variant type declarations
+  let sumType := String.intercalate " ⊕ " (typeDefs.map (·.typeDecl.pretty))
+  let typeDecl := if prec >= max_prec then "(" ++ sumType ++ ")" else sumType
+
+  -- Build FromJson instance that tries each variant in order
+  let fromJsonCases := typeDefs.zipIdx.map fun (typeDef, idx) =>
+    let inner := match typeDef.fromJsonImpl with
+      | some customParser => customParser
+      | none => "fromJson? j"
+    let wrapper : Format := Std.Format.group (Std.Format.nestD ("(fun x =>" ++ Std.Format.line ++ depthToInlInr "x" typeDefs.length idx ++ ")"))
+    Std.Format.group (Std.Format.nestD (wrapper ++ Std.Format.line ++ "<$>" ++ Std.Format.line ++ "(" ++ inner ++ ")"))
+  let fromJsonImpl := Std.Format.joinSep fromJsonCases (" <|>" ++ Std.Format.line)
+
+  -- Build ToJson instance that matches on the sum type
+  let toJsonCases := typeDefs.zipIdx.map fun (typeDef, idx) =>
+    let pattern : Format := Std.Format.group (Std.Format.nestD (depthToInlInr "x" typeDefs.length idx))
+    let serializer := match typeDef.toJsonImpl with
+      | some customToJson => customToJson
+      | none => "toJson x"
+    "| " ++ pattern ++ " => " ++ serializer
+  let toJsonImpl := Std.Format.group ("match x with\n" ++ Std.Format.joinSep toJsonCases "\n")
+
+  -- Only create extraDocComment if there are actual descriptions
+  let nonEmptyDescs := descriptions.filterMap (fun desc => desc.filter (!·.isEmpty))
+  let extraDocComment := if nonEmptyDescs.isEmpty then none
+    else some (Std.Format.joinSep (nonEmptyDescs.map Std.Format.text) .line)
+
+  .ok {
+    typeDecl := typeDecl
+    fromJsonImpl := fromJsonImpl
+    toJsonImpl := toJsonImpl
+    extraDocComment := extraDocComment
+  }
+
+/-- Try to parse oneOf as an inlineable sum type.
+    For inlining purposes, oneOf is treated the same as anyOf. -/
+def parseInlineableOneOf (variants : Array JsonSchema.Schema)
+    (recurse : JsonSchema.Schema → Nat → Except String TypeDefinition)
+    (prec : Nat := 0) : Except String TypeDefinition :=
+  parseInlineableAnyOf variants recurse prec
+
 /-- Inline types such as String ⊕ Int do not need complicated definitions.
     The prec parameter determines whether to add parentheses for function application.
 -/
-def parseInline (s : JsonSchema.Schema) (prec : Nat := 0) : Except String TypeDefinition :=
+partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0) : Except String TypeDefinition :=
   match s with
   | .Boolean b => pure { typeDecl := getBoolType b }
-  | .Object o => do
-  isSimple o
+  | .Object o =>
   parseRef o <|>
   parseConstant o <|>
-  parseSimpleType o prec
+  (do isSimple o; parseSimpleType o prec) <|>
+  (if let some anyOf := o.anyOf then parseInlineableAnyOf anyOf (fun s p => parseInline s p) prec else .error "no anyOf") <|>
+  (if let some oneOf := o.oneOf then parseInlineableOneOf oneOf (fun s p => parseInline s p) prec else .error "no oneOf")
+
+def mkDocComment (s : Std.Format) : Format :=
+  .nestD ("/-- " ++ s ++ " -/")
+
+def combineDocStrings (topDoc : Std.Format) (extraComment : Option Std.Format) : Format :=
+  match topDoc, extraComment with
+  | .nil, none => .nil
+  | .nil, some extra => extra
+  | doc, none => doc
+  | doc, some extra => if extra.isEmpty then doc else doc ++ "\n\n" ++ extra
+
 
 def parseInlineAbbrev (s : JsonSchema.Schema) (name : String) :
     Except String TypeDefinition :=
   parseInline s <&> fun form =>
+    let combined := combineDocStrings s.getDocString form.extraDocComment
+    let docComment := if combined.isEmpty then .nil else mkDocComment combined ++ .line
     {
-      typeDecl := s.getDoc ++ (
+      typeDecl := docComment ++ (
         Std.Format.group <|
           .nest 2 (
             f!"abbrev {name} :=" ++ .line ++ form.typeDecl

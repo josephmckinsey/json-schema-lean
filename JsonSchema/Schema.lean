@@ -369,11 +369,11 @@ def Schema.getDefinition? (schema : Schema) (key : String) : Option Schema :=
   | Schema.Boolean _ => none
   | Schema.Object o => o.definitions >>= (Std.TreeMap.Raw.get? · key)
 
-def Schema.getDoc (s : JsonSchema.Schema) : Std.Format :=
+def Schema.getDocString (s : JsonSchema.Schema) : Std.Format :=
   match s with
   | .Boolean _ => .nil
   | .Object o => match o.description with
-    | some d => f!"/-- {d} -/\n"
+    | some d => d
     | none => .nil
 
 end JsonSchema

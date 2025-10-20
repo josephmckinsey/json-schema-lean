@@ -12,6 +12,8 @@ structure TypeDefinition where
   toJsonImpl : Option Std.Format := none
   /-- Nested type definitions that should be prepended before this definition -/
   dependencies : List TypeDefinition := []
+  /-- Extra doc comment for use in structures and inductives -/
+  extraDocComment : Option Std.Format := none
 deriving Inhabited
 
 /-- Default name sanitization: replace invalid characters, handle keywords -/
