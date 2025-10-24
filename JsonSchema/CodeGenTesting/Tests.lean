@@ -1,4 +1,5 @@
 import JsonSchema.CodeGen
+import JsonSchema.CodeGenTesting.ReferencesTests
 import UriTesting.Helpers
 
 -- Test the new Format-based code generation
