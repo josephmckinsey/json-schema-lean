@@ -59,6 +59,7 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen 
   -- by providing all the name ahead of time in the config,
   -- and then parsing in the correct order (+ mutual types)
   parseInlineAbbrev s name <|>
+  parseArrayAbbrev s name schemaToTypeDef <|>
   (match s with
    | .Object obj => withNewID s (
      -- Try enum first

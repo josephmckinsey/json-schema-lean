@@ -505,14 +505,26 @@ def stringListSchemaJson : Json :=
 def stringListSchema : JsonSchema.Schema :=
   (fromJson? stringListSchemaJson).toOption.get!
 
+def listOfPeopleSchema : JsonSchema.Schema :=
+  .Object {
+    description := "A list of people"
+    type := #[.ArrayType]
+    items := some (.Single testPersonSchema)
+  }
+
 def arrayTests : TestM Unit := testFunction "Array Tests" do
   testEq "inlinable string array" (schemaToString stringListSchema "StringList")
     r#"/-- A list of strings -/
 abbrev StringList := Array (String ⊕ Int)"#
 
-#eval TestM.run do
-  arrayTests
-  printSummary
+  testEq "person array" (schemaToString listOfPeopleSchema "PersonList")
+    r#"structure PersonListItems where
+  name : String
+  age : Int
+  email : Option String
+
+/-- A list of people -/
+abbrev PersonList := Array PersonListItems"#
 
 def generatedCodeTests : TestM Unit := testFunction "generated code compilation tests" do
   -- Test that parsing works correctly
@@ -549,6 +561,7 @@ def allCodeGenTests : TestM Unit := group "CodeGen Tests" do
   fromJsonListSumTests
   parseSimpleTypeTests
   descriptionTests
+  arrayTests
 
 def hmm := Option (String ⊕ Int)
 
