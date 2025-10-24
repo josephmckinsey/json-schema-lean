@@ -1,5 +1,6 @@
 import JsonSchema.Schema
 import JsonSchema.CodeGen.Config
+import JsonSchema.CodeGen.References
 import Lean
 
 namespace JsonSchema.CodeGen
@@ -94,7 +95,7 @@ def parseConstant (o : JsonSchema.SchemaObject) : Except String TypeDefinition :
 
 def parseRef (o : JsonSchema.SchemaObject) : SchemaGen TypeDefinition :=
   match o.ref with
-  | some _ => pure { typeDecl := "NotImplemented" }
+  | some ref => resolveRefToName ref <&> fun name => { typeDecl := name }
   | none => .error "Could not find ref"
 
 def parseAnyType (types : Array JsonSchema.JsonType) : Except String TypeDefinition :=

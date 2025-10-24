@@ -3,36 +3,23 @@ import JsonSchema.Resolving
 import JsonSchema.CodeGen.Config
 import Lean
 
-/-! # This is NOT READY. -/
 namespace JsonSchema.CodeGen
 
 open Lean
 
-/-- TODO: Resolve a $ref to its definition
+def resolveRefToName (ref : LeanUri.URI ⊕ LeanUri.RelativeRef) : SchemaGen String := do
+  let resolver ← CodeGenContext.resolver <$> read
+  let (rootURI, path) := resolver.resolvePath ((← get).resolveURIorRef ref)
+  let name? ← read <&> fun ctx => ctx.nameMap.get? ⟨rootURI, path⟩
+  match name? with
+  | some name => pure name
+  | none => .error s!"Reference {←get} -> {rootURI} {path} could not be found."
 
-    This will handle:
-    - Looking up #/definitions/TypeName
-    - Resolving the reference using the Resolver
-    - Name sanitization
-    - Tracking already-resolved schemas to detect cycles
+/-- Populate nameMap from resolver.
+
+  Iterates through definitions recurisvely, assigns unique names to
+  all schemas reachable through rootURIs as well as through subdefinitions.
 -/
-def resolveRef (ref : LeanUri.URI ⊕ LeanUri.RelativeRef)
-    (resolver : JsonSchema.Resolver)
-    (alreadyResolved : Array String := #[])
-    (config : Config := {}) : Except String String :=
-  .error "Not yet implemented: resolveRef"
-
-/-- TODO: Extract and sort all definitions for code generation
-
-    This will handle:
-    - Extracting definitions from a schema
-    - Using the Resolver to follow references
-    - Topological sorting to handle dependencies
-    - Detecting circular references
--/
-def extractDefinitions (schema : JsonSchema.Schema)
-    (resolver : JsonSchema.Resolver)
-    (config : Config := {}) : Except String (Array (String × JsonSchema.Schema)) :=
-  .error "Not yet implemented: extractDefinitions"
+def mkNameMap (r : Resolver) : Std.HashMap SchemaID String := sorry
 
 end JsonSchema.CodeGen
