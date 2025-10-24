@@ -1,6 +1,7 @@
 import JsonSchema.Schema
 import JsonSchema.Resolving
 import JsonSchema.CodeGen.Config
+import JsonSchema.PointerFragment
 import Lean
 
 namespace JsonSchema.CodeGen
@@ -134,5 +135,77 @@ partial def mkNameMap (r : Resolver) (config : Config := {}) : Std.HashMap Schem
         (nameMap.insert schemaID finalName, usedNames.insert finalName)
 
   nameMap
+
+/-!
+## Phase 2: Reference Graph Construction
+
+Build a directed graph where:
+- Nodes: Each SchemaID (each named schema)
+- Edges: A → B if schema A contains a $ref to schema B
+
+We track all references (both "evil" and "safe" by iterating through the schema tree).
+-/
+
+/-- Directed graph of schema dependencies represented as adjacency list.
+    Each node is identified by its index in the original namedSchemas array. -/
+structure RefGraph where
+  /-- Adjacency list: adjList[i] = array of indices that schema i references -/
+  adjList : Array (Array Nat)
+  /-- Map from SchemaID to its index in the adjacency list -/
+  index : Std.HashMap SchemaID Nat
+
+/-- Extract all $ref targets from a schema that point to named schemas.
+    Returns the SchemaIDs of all referenced schemas.
+    Only extracts "active" refs (not those buried in definitions). -/
+partial def extractSchemaRefs (resolver : Resolver) (schemaID : SchemaID)
+    (nameMap : Std.HashMap SchemaID String) : Except String (Array SchemaID) := do
+  -- Get the schema at this location
+  let schema? := resolver.getSchemaFromRoot? schemaID.baseURI schemaID.path
+  let schema ← match schema? with
+    | some s => .ok s
+    | none => .error s!"Schema not found at {schemaID.baseURI} {schemaID.path}"
+
+  -- Collect all refs using foldActive (skips nested definitions)
+  let refs := schema.foldActive schemaID.path schemaID.baseURI (init := #[])
+    fun refs s _path baseURI =>
+      match s with
+      | Schema.Boolean _ => refs
+      | Schema.Object o =>
+        match o.ref with
+        | some ref =>
+            -- Resolve the ref to its canonical location
+            let resolvedURI := baseURI.resolveURIorRef ref
+            let (rootURI, path) := resolver.resolvePath resolvedURI
+            refs.push (SchemaID.mk rootURI path)
+        | none => refs
+
+  -- Filter to only include refs that point to named schemas
+  let validRefs := refs.filter (nameMap.contains ·)
+  let badRefs := refs.filter (!nameMap.contains ·)
+
+  -- Error if there are any refs to non-named schemas
+  if !badRefs.isEmpty then
+    let badRefStrs := badRefs.map fun id => s!"{id.baseURI}#{JsonPointer.toString id.path}"
+    .error s!"Bad references found in schema {schemaID.baseURI}#{JsonPointer.toString schemaID.path}: {badRefStrs.toList}"
+  else
+    .ok validRefs
+
+/-- Build the reference graph from all named schemas.
+    namedSchemas must be in a stable order (e.g., alphabetically sorted). -/
+def buildRefGraph (namedSchemas : Array SchemaID) (nameMap : Std.HashMap SchemaID String)
+    (resolver : Resolver) : Except String RefGraph := do
+  -- Build index mapping SchemaID → Nat
+  let index : Std.HashMap SchemaID Nat := namedSchemas.zipIdx.foldl
+    (init := Std.HashMap.emptyWithCapacity (capacity := namedSchemas.size))
+    fun map (schemaID, i) => map.insert schemaID i
+
+  -- Build adjacency list by extracting refs from each schema
+  let adjList ← namedSchemas.mapM fun schemaID => do
+    let refs ← extractSchemaRefs resolver schemaID nameMap
+    -- Convert SchemaIDs to indices
+    let indices := refs.filterMap (index.get? ·)
+    .ok indices
+
+  .ok { adjList, index }
 
 end JsonSchema.CodeGen

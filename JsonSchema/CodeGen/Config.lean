@@ -55,6 +55,9 @@ structure SchemaID where
   path : List String
 deriving BEq, Hashable
 
+instance : ToString SchemaID where
+  toString id := (toString id.baseURI) ++ "#" ++ JsonPointer.toString id.path
+
 /-- Extended code generation context with reference support -/
 structure CodeGenContext where
   /-- Resolver for looking up schemas -/

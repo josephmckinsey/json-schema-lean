@@ -123,6 +123,35 @@ def SchemaObject.foldAnyOf (o : SchemaObject) (f : α → Schema × Nat → α) 
 def SchemaObject.foldOneOf (o : SchemaObject) (f : α → Schema × Nat → α)  (init : α) : α :=
   (o.oneOf.getD #[]).zipIdx.foldl f init
 
+def SchemaObject.activeFolds (o : SchemaObject) (init : α) (pathStack : List String) (baseURI : URI)
+    (f : α → Schema → List String → URI → α) : α :=
+  let init : α := o.foldProperties (init := init) fun x (key, property) =>
+    f x property (key::"properties"::pathStack) baseURI
+  let init : α := o.foldPatternProperties (init := init) fun x (key, property) =>
+    f x property (key::"patternProperties"::pathStack) baseURI
+  let init : α := (o.propertyNames <&>
+    (f init · ("propertyNames"::pathStack) baseURI)).getD init
+  let init : α := o.foldDependencies (init := init) fun x (key, property) =>
+    f x property (key::"dependencies"::pathStack) baseURI
+  let init : α := o.foldItems (init := init) fun x (item, i) =>
+    f x item (toString i::"items"::pathStack) baseURI
+  let init : α := (o.additionalItems <&>
+    (f init · ("additionalItems"::pathStack) baseURI)).getD init
+  let init : α := (o.contains <&>
+    (f init · ("contains"::pathStack) baseURI)).getD init
+  let init : α := o.foldAllOf (init := init) fun x (allOf, i) =>
+    f x allOf (toString i::"allOf"::pathStack) baseURI
+  let init : α := o.foldAnyOf (init := init) fun x (anyOf, i) =>
+    f x anyOf (toString i::"anyOf"::pathStack) baseURI
+  let init : α := o.foldOneOf (init := init) fun x (oneOf, i) =>
+    f x oneOf (toString i::"oneOf"::pathStack) baseURI
+  let init : α := (o.not <&> (f init · ("not"::pathStack) baseURI)).getD init
+  let init : α := (o.ifSchema <&> (f init · ("if"::pathStack) baseURI)).getD init
+  let init : α := (o.thenSchema <&> (f init · ("then"::pathStack) baseURI)).getD init
+  let init : α := (o.elseSchema <&> (f init · ("else"::pathStack) baseURI)).getD init
+  init
+
+
 -- I think this can be simplified...
 def Schema.foldStackAux (schema : Schema) (pathStack : List String) (baseURI : URI)
     (f : α → Schema → List String → URI → α) (init : α) : α :=
@@ -132,30 +161,7 @@ def Schema.foldStackAux (schema : Schema) (pathStack : List String) (baseURI : U
   | Schema.Object o =>
       let init : α := o.foldDefinitions (init := init) fun x (key, definition) =>
         f x definition (key::"definitions"::pathStack) baseURI
-      let init : α := o.foldProperties (init := init) fun x (key, property) =>
-        f x property (key::"properties"::pathStack) baseURI
-      let init : α := o.foldPatternProperties (init := init) fun x (key, property) =>
-        f x property (key::"patternProperties"::pathStack) baseURI
-      let init : α := (o.propertyNames <&>
-        (f init · ("propertyNames"::pathStack) baseURI)).getD init
-      let init : α := o.foldDependencies (init := init) fun x (key, property) =>
-        f x property (key::"dependencies"::pathStack) baseURI
-      let init : α := o.foldItems (init := init) fun x (item, i) =>
-        f x item (toString i::"items"::pathStack) baseURI
-      let init : α := (o.additionalItems <&>
-        (f init · ("additionalItems"::pathStack) baseURI)).getD init
-      let init : α := (o.contains <&>
-        (f init · ("contains"::pathStack) baseURI)).getD init
-      let init : α := o.foldAllOf (init := init) fun x (allOf, i) =>
-        f x allOf (toString i::"allOf"::pathStack) baseURI
-      let init : α := o.foldAnyOf (init := init) fun x (anyOf, i) =>
-        f x anyOf (toString i::"anyOf"::pathStack) baseURI
-      let init : α := o.foldOneOf (init := init) fun x (oneOf, i) =>
-        f x oneOf (toString i::"oneOf"::pathStack) baseURI
-      let init : α := (o.not <&> (f init · ("not"::pathStack) baseURI)).getD init
-      let init : α := (o.ifSchema <&> (f init · ("if"::pathStack) baseURI)).getD init
-      let init : α := (o.thenSchema <&> (f init · ("then"::pathStack) baseURI)).getD init
-      let init : α := (o.elseSchema <&> (f init · ("else"::pathStack) baseURI)).getD init
+      let init : α := o.activeFolds init pathStack baseURI f
       init
 
 -- TODO: Termination should follow from fold attach logic: everything we fold over
@@ -166,7 +172,26 @@ def Schema.foldStackAux (schema : Schema) (pathStack : List String) (baseURI : U
 partial def Schema.foldStack (schema : Schema) (pathStack : List String) (baseURI : URI)
     (f : α → Schema → List String → URI → α) (init : α) : α:=
   Schema.foldStackAux schema pathStack baseURI (init := f init schema pathStack baseURI)
-    fun x s path baseURI => s.foldStack path baseURI f (f x s path baseURI)
+    fun x s path baseURI => s.foldStack path baseURI f x
+
+/-- Like Schema.foldStackAux but skips definitions (for extracting active refs only).
+    This traverses properties, items, oneOf, anyOf, allOf, etc. but NOT definitions. -/
+def Schema.foldActiveAux (schema : Schema) (pathStack : List String) (baseURI : LeanUri.URI)
+    (f : α → Schema → List String → LeanUri.URI → α) (init : α) : α :=
+  let baseURI : LeanUri.URI := (schema.getID? baseURI).getD baseURI
+  match schema with
+  | Schema.Boolean _ => init
+  | Schema.Object o =>
+      let init : α := o.activeFolds init pathStack baseURI f
+      init
+
+/-- Like Schema.foldStack but skips definitions. This finds all "active" refs that
+    actually constrain validation, excluding refs only in definitions. -/
+partial def Schema.foldActive (schema : Schema) (pathStack : List String) (baseURI : LeanUri.URI)
+    (f : α → Schema → List String → LeanUri.URI → α) (init : α) : α :=
+  Schema.foldActiveAux schema pathStack baseURI (init := f init schema pathStack baseURI)
+    fun x s path baseURI => s.foldActive path baseURI f x
+
 
 def Resolver.registerPaths (r : Resolver) (schema : Schema) (rootURI : URI)
     : Resolver :=
