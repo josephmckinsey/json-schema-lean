@@ -1,3 +1,6 @@
+import Lean
+import LeanUri
+import JsonSchema.Resolving
 namespace JsonSchema.CodeGen
 
 open Lean
@@ -45,5 +48,30 @@ structure Config where
 def capitalize (s : String) : String :=
   if s.isEmpty then s
   else s.take 1 |>.toUpper ++ s.drop 1
+
+/-- Identifies a schema by its canonical URI and path -/
+structure SchemaID where
+  baseURI : LeanUri.URI
+  path : List String
+deriving BEq, Hashable
+
+/-- Extended code generation context with reference support -/
+structure CodeGenContext where
+  /-- Resolver for looking up schemas -/
+  resolver : Resolver
+  /-- Mapping from SchemaID to generated type name -/
+  nameMap : Std.HashMap SchemaID String
+  /-- Configuration -/
+  config : Config
+
+abbrev SchemaGen := ReaderT CodeGenContext (
+  StateT LeanUri.URI (Except String ·)
+)
+
+def SchemaGen.run (gen : SchemaGen α) (ctx : CodeGenContext) (baseURI : LeanUri.URI)
+    : Except String α := Prod.fst <$> ((ReaderT.run gen ctx).run baseURI)
+
+def SchemaGen.noCtxRun? (gen : SchemaGen α) : Except String α :=
+  gen.run ⟨.empty, .emptyWithCapacity, {}⟩ default
 
 end JsonSchema.CodeGen

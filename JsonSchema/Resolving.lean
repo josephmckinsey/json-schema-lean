@@ -78,6 +78,9 @@ structure Resolver where
   registeredPaths : Std.HashMap URI (URI × List String) :=
     Std.HashMap.emptyWithCapacity
 
+def Resolver.empty : Resolver := {}
+
+/-- Usually you should use addSchema -/
 def Resolver.addRootSchema (r : Resolver) (schema : Schema) (baseURI : URI := default)
     : Resolver :=
   { r with

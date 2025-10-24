@@ -90,8 +90,8 @@ structure FieldInfo where
 /-- Build constructor arguments for an object-based variant.
     Returns field declarations like "(x : Int) (tail : List)" along with field information -/
 partial def mkConstructorArgs (obj : JsonSchema.SchemaObject) (typeName : String)
-    (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config) : Except String (Format × List TypeDefinition × Array FieldInfo) := do
+    (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen (Format × List TypeDefinition × Array FieldInfo) := do
   let properties := obj.properties.getD #[]
   if properties.isEmpty then
     throw "Constructor variant has no properties"
@@ -102,12 +102,13 @@ partial def mkConstructorArgs (obj : JsonSchema.SchemaObject) (typeName : String
 
   for (fieldName, fieldSchema) in properties do
     let required := obj.required.any (·.contains fieldName)
+    -- We call the baseURI pdate within getFieldType
     let fieldTypeDef ← if required then
-      getFieldType fieldSchema typeName fieldName max_prec schemaToTypeDef config
+      getFieldType fieldSchema typeName fieldName max_prec schemaToTypeDef
     else
-      makeOptionalFieldType fieldSchema typeName fieldName schemaToTypeDef config
+      makeOptionalFieldType fieldSchema typeName fieldName schemaToTypeDef
     allDependencies := allDependencies ++ fieldTypeDef.dependencies
-    let sanitizedName := config.sanitizeName fieldName
+    let sanitizedName := (←read).config.sanitizeName fieldName
     argDecls := ("(" ++ sanitizedName ++ " : " ++ fieldTypeDef.typeDecl ++ ")") :: argDecls
     fieldInfosList := { origName := fieldName, sanitizedName := sanitizedName, typeDef := fieldTypeDef } :: fieldInfosList
 
@@ -131,8 +132,8 @@ structure VariantInfo where
 /-- Convert a oneOf variant to a constructor declaration with metadata.
     Returns variant info including whether it's a simple type or object. -/
 partial def variantToConstructor (variant : JsonSchema.Schema) (ctorName : String) (typeName : String)
-    (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config) : Except String VariantInfo :=
+    (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen VariantInfo :=
   -- Simple inline type: | case0 (val : String)
   (do
     let typeDef ← parseInline variant max_prec
@@ -152,7 +153,7 @@ partial def variantToConstructor (variant : JsonSchema.Schema) (ctorName : Strin
   | .Object obj => do
     if obj.type.contains .ObjectType && obj.properties.isSome then
       -- Multi-field constructor: | cons (head : Int) (tail : List)
-      let (args, deps, fieldInfos) ← mkConstructorArgs obj typeName schemaToTypeDef config
+      let (args, deps, fieldInfos) ← mkConstructorArgs obj typeName schemaToTypeDef
       let ctorDecl := "| " ++ ctorName ++ " " ++ args
 
       -- Combine variant description with field extraDocComments
@@ -252,8 +253,8 @@ This handles:
 - FromJson/ToJson instances that try each variant
 -/
 def oneOfToInductive (variants : Array JsonSchema.Schema) (typeName : String)
-    (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config := {}) : Except String TypeDefinition := do
+    (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen TypeDefinition := do
   -- For each variant, convert to constructor
   let mut variantInfos : Array VariantInfo := #[]
   let mut allDependencies : List TypeDefinition := []
@@ -261,7 +262,7 @@ def oneOfToInductive (variants : Array JsonSchema.Schema) (typeName : String)
   for i in [:variants.size] do
     let variant := variants[i]!
     let ctorName := s!"case{i}"
-    let info ← variantToConstructor variant ctorName typeName schemaToTypeDef config
+    let info ← variantToConstructor variant ctorName typeName schemaToTypeDef
     variantInfos := variantInfos.push info
     allDependencies := allDependencies ++ info.dependencies
 
@@ -279,7 +280,7 @@ def oneOfToInductive (variants : Array JsonSchema.Schema) (typeName : String)
   let fromJsonImpl := mkOneOfFromJson variantInfos typeName
   let toJsonImpl := mkOneOfToJson variantInfos typeName
 
-  .ok {
+  pure {
     typeDecl := typeDecl
     fromJsonImpl := fromJsonImpl
     toJsonImpl := toJsonImpl
@@ -293,8 +294,8 @@ with constructors for each variant. In the future, we may want to handle
 the semantic difference (anyOf allows multiple valid interpretations).
 -/
 def anyOfToInductive (variants : Array JsonSchema.Schema) (typeName : String)
-    (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config := {}) : Except String TypeDefinition :=
-  oneOfToInductive variants typeName schemaToTypeDef config
+    (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen TypeDefinition :=
+  oneOfToInductive variants typeName schemaToTypeDef
 
 end JsonSchema.CodeGen

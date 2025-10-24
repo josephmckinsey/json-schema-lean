@@ -35,13 +35,4 @@ def extractDefinitions (schema : JsonSchema.Schema)
     (config : Config := {}) : Except String (Array (String × JsonSchema.Schema)) :=
   .error "Not yet implemented: extractDefinitions"
 
-/-- Context for code generation that tracks what's been generated -/
-structure CodeGenContext where
-  /-- Resolver for looking up $ref and definitions -/
-  resolver : JsonSchema.Resolver
-  /-- Names of schemas already generated (to detect cycles) -/
-  generated : Array String := #[]
-  /-- Configuration -/
-  config : Config := {}
-
 end JsonSchema.CodeGen

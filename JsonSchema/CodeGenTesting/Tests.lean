@@ -208,7 +208,9 @@ structure NestedUnion where
     .Object { type := #[.IntegerType] }
   ]
   testEq "Simple oneOf type decl"
-    ((oneOfToInductive testOneOfSimple "StringOrInt" (fun _ _ => .error "uh oh")).toOption.get!.typeDecl.pretty)
+    ((SchemaGen.noCtxRun? (oneOfToInductive testOneOfSimple "StringOrInt"
+      (fun _ _ => .error "uh oh")))
+    ).toOption.get!.typeDecl.pretty
     "inductive StringOrInt where | case0 (val : String) | case1 (val : Int)"
 
   testEq "Enum FromJson instance"
@@ -232,8 +234,8 @@ def oneOfFromJsonToJsonTests : TestM Unit := testFunction "oneOf FromJson/ToJson
     ((oneOfToInductive
       #[.Object { type := #[.StringType] }, .Object { type := #[.IntegerType] }]
       "StringOrInt"
-      (fun _ _ => Except.error "uh oh")
-      {}).toOption.get!.fromJsonImpl.get!.pretty)
+      (fun _ _ => Except.error "uh oh")).noCtxRun?
+    ).toOption.get!.fromJsonImpl.get!.pretty
     r#"instance : FromJson StringOrInt where
   fromJson? j :=
     .case0 <$> fromJson? j <|>
@@ -241,11 +243,11 @@ def oneOfFromJsonToJsonTests : TestM Unit := testFunction "oneOf FromJson/ToJson
 
   -- Test ToJson instance generation for oneOf with simple types
   testEq "oneOf ToJson instance"
-    ((oneOfToInductive
+    (oneOfToInductive
       #[.Object { type := #[.StringType] }, .Object { type := #[.IntegerType] }]
       "StringOrInt"
       (fun _ _ => Except.error "uh oh")
-      {}).toOption.get!.toJsonImpl.get!.pretty)
+    ).noCtxRun?.toOption.get!.toJsonImpl.get!.pretty
     r#"instance : ToJson StringOrInt where
   toJson x := match x with
     | .case0 val => toJson val
@@ -254,12 +256,12 @@ def oneOfFromJsonToJsonTests : TestM Unit := testFunction "oneOf FromJson/ToJson
   -- Test oneOf with a sum type variant (String ⊕ Int)
   -- Bool has no custom impl, but String ⊕ Int does
   testEq "oneOf with sum type variant - FromJson"
-    ((oneOfToInductive
+    (oneOfToInductive
       #[.Object { type := #[.BooleanType] },
         .Object { type := #[.StringType, .IntegerType] }]
       "BoolOrStringOrInt"
       (fun _ _ => Except.error "uh oh")
-      {}).toOption.get!.fromJsonImpl.get!.pretty)
+    ).noCtxRun?.toOption.get!.fromJsonImpl.get!.pretty
     r#"instance : FromJson BoolOrStringOrInt where
   fromJson? j :=
     .case0 <$> fromJson? j <|>
@@ -267,12 +269,12 @@ def oneOfFromJsonToJsonTests : TestM Unit := testFunction "oneOf FromJson/ToJson
       (fun x => .inr (x)) <$> ((inferInstance : FromJson Int).fromJson? j))"#
 
   testEq "oneOf with sum type variant - ToJson"
-    ((oneOfToInductive
+    (oneOfToInductive
       #[.Object { type := #[.BooleanType] },
         .Object { type := #[.StringType, .IntegerType] }]
       "BoolOrStringOrInt"
       (fun _ _ => Except.error "uh oh")
-      {}).toOption.get!.toJsonImpl.get!.pretty)
+    ).noCtxRun?.toOption.get!.toJsonImpl.get!.pretty
     r#"instance : ToJson BoolOrStringOrInt where
   toJson x := match x with
     | .case0 val => toJson val
@@ -286,7 +288,8 @@ def oneOfVariantTests : TestM Unit := testFunction "oneOf variant doc comments a
     .Object { type := #[.StringType], description := some "A string variant" },
     .Object { type := #[.IntegerType], description := some "An integer variant" }
   ]
-  let result := (oneOfToInductive testOneOfWithDesc "MyUnion" (fun _ _ => .error "uh oh") {}).toOption.get!
+  let result := (oneOfToInductive testOneOfWithDesc "MyUnion" (fun _ _ => .error "uh oh")
+    ).noCtxRun?.toOption.get!
 
   testEq "oneOf with variant descriptions - type decl"
     (result.typeDecl.pretty (width := 0))
@@ -297,7 +300,7 @@ def oneOfVariantTests : TestM Unit := testFunction "oneOf variant doc comments a
   | case1 (val : Int)"#
 
   -- Test oneOf with object variants containing sum type fields
-  let dummyResolver : JsonSchema.Schema → String → Except String TypeDefinition := fun _ _ => .error "not used"
+  let dummyResolver : JsonSchema.Schema → String → SchemaGen TypeDefinition := fun _ _ => .error "not used"
   let testOneOfWithSumFields : Array JsonSchema.Schema := #[
     .Object {
       type := #[.ObjectType]
@@ -318,7 +321,8 @@ def oneOfVariantTests : TestM Unit := testFunction "oneOf variant doc comments a
     }
   ]
 
-  let result2 := (oneOfToInductive testOneOfWithSumFields "Record" dummyResolver {}).toOption.get!
+  let result2 := (oneOfToInductive testOneOfWithSumFields "Record" dummyResolver
+    ).noCtxRun?.toOption.get!
 
   -- Check that constructor has doc comments
   testEq "oneOf object variants with descriptions"
@@ -359,7 +363,8 @@ def oneOfVariantTests : TestM Unit := testFunction "oneOf variant doc comments a
       ]
     }
   ]
-  let result3 := (oneOfToInductive testOneOfWithFieldExtraDocs "MyVariant" dummyResolver {}).toOption.get!
+  let result3 := (oneOfToInductive testOneOfWithFieldExtraDocs "MyVariant" dummyResolver
+    ).noCtxRun?.toOption.get!
   let docStr := result3.typeDecl.pretty
 
   -- Check that variant description is included

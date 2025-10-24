@@ -54,8 +54,7 @@ partial def flattenDependencies (typeDef : TypeDefinition) : List TypeDefinition
   nestedDeps ++ deps
 
 /-- Main schema to TypeDefinition conversion -/
-partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String)
-    (config : Config := {}) : Except String TypeDefinition := do
+partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen TypeDefinition := do
   -- We are going to ignore refs for now, which we will fill in
   -- by providing all the name ahead of time in the config,
   -- and then parsing in the correct order (+ mutual types)
@@ -64,23 +63,28 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String)
    | .Object obj =>
      -- Try enum first
      if let some enum := obj.enum then
-       enumToInductive enum name config
+       enumToInductive enum name
      -- Then try oneOf
      else if let some oneOf := obj.oneOf then
-       oneOfToInductive oneOf name (schemaToTypeDef (config := config)) config
+       oneOfToInductive oneOf name schemaToTypeDef
      -- Then try anyOf (treated same as oneOf for now)
      else if let some anyOf := obj.anyOf then
-       anyOfToInductive anyOf name (schemaToTypeDef (config := config)) config
+       anyOfToInductive anyOf name schemaToTypeDef
      -- Finally try object/structure
      else
-       objectToStructure obj name (schemaToTypeDef (config := config)) config
+       objectToStructure obj name schemaToTypeDef
    | _ => .error "Cannot convert boolean schema to structure")
 
 /-- Main schema to TypeDefinition conversion -/
 def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
     (config : Config := {}) : Except String Format := do
   let name := config.sanitizeName typeName
-  let typeDef ← schemaToTypeDef s name config
+  let ctx : CodeGenContext := {
+    resolver := Resolver.empty.addSchema s,
+    nameMap := .ofList [(⟨default, []⟩, name)]
+    config := config
+  }
+  let typeDef ← (schemaToTypeDef s name).run ctx default
 
   -- Flatten all nested dependencies
   let allDeps := flattenDependencies typeDef

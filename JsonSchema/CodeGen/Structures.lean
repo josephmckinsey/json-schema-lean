@@ -19,26 +19,25 @@ def generateFieldTypeName (parentTypeName : String) (fieldName : String) (config
     Returns the full TypeDefinition to preserve FromJson/ToJson instances and doc comments.
     The prec parameter is passed to parseInline for proper parenthesization. -/
 partial def getFieldType (schema : JsonSchema.Schema) (parentTypeName : String) (fieldName : String)
-    (prec : Nat) (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config) : Except String TypeDefinition := do
+    (prec : Nat) (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen TypeDefinition :=
   -- Try to parse inline first (for simple types)
-  match parseInline schema prec with
-  | .ok typeDef => return typeDef
-  | .error _ =>
+  parseInline schema prec <|> (do
     -- Complex type, needs a named definition
-    let typeName := generateFieldTypeName parentTypeName fieldName config
+    let typeName := generateFieldTypeName parentTypeName fieldName (← read).config
     let typeDef ← schemaToTypeDef schema typeName
     -- Return a TypeDefinition that references this named type
     return {
       typeDecl := .text typeName
       dependencies := [typeDef]
     }
+  )
 
 /-- Wrap a type in Option for optional fields, preserving FromJson/ToJson and doc comments -/
 def makeOptionalFieldType (schema : JsonSchema.Schema) (parentTypeName : String) (fieldName : String)
-    (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config) : Except String TypeDefinition := do
-  let innerTypeDef ← getFieldType schema parentTypeName fieldName max_prec schemaToTypeDef config
+    (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen TypeDefinition := do
+  let innerTypeDef ← getFieldType schema parentTypeName fieldName max_prec schemaToTypeDef
 
   -- If the inner type has custom FromJson/ToJson, wrap them with Option instances
   let fromJsonImpl := innerTypeDef.fromJsonImpl.map fun innerFromJson =>
@@ -138,8 +137,9 @@ def mkStructToJson (typeName : String) (fieldInfos : List (String × String × T
     - doc comments from descriptions
 -/
 partial def objectToStructure (obj : JsonSchema.SchemaObject) (typeName : String)
-    (schemaToTypeDef : JsonSchema.Schema → String → Except String TypeDefinition)
-    (config : Config := {}) : Except String TypeDefinition := do
+    (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
+    : SchemaGen TypeDefinition := do
+  let config ← read <&> (·.config)
   -- Check that we have properties
   let properties := obj.properties.getD #[]
   if properties.isEmpty then
@@ -153,15 +153,16 @@ partial def objectToStructure (obj : JsonSchema.SchemaObject) (typeName : String
   for (fieldName, fieldSchema) in properties do
     let required := isFieldRequired fieldName obj.required
     let fieldTypeDef ← if required then
-      getFieldType fieldSchema typeName fieldName 0 schemaToTypeDef config
+      getFieldType fieldSchema typeName fieldName 0 schemaToTypeDef
     else
-      makeOptionalFieldType fieldSchema typeName fieldName schemaToTypeDef config
+      makeOptionalFieldType fieldSchema typeName fieldName schemaToTypeDef
 
     -- Collect dependencies
     allDependencies := allDependencies ++ fieldTypeDef.dependencies
 
     -- Build field declaration
-    let fieldDecl := mkFieldDecl fieldName fieldTypeDef.typeDecl fieldSchema fieldTypeDef.extraDocComment config
+    let fieldDecl := mkFieldDecl fieldName fieldTypeDef.typeDecl
+      fieldSchema fieldTypeDef.extraDocComment config
     fieldDecls := fieldDecl :: fieldDecls
 
     -- Collect field info for instances
