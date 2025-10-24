@@ -12,11 +12,6 @@ TEMP_DIR=$(mktemp -d)
 CLEANUP_ON_EXIT=false
 trap 'if [ "$CLEANUP_ON_EXIT" = true ]; then rm -rf "$TEMP_DIR"; fi' EXIT
 
-# Build the code generator
-echo "Building schemaToJson..."
-lake build schemaToJson
-echo ""
-
 # Track test results
 TOTAL=0
 PASSED=0
@@ -36,7 +31,7 @@ for schema_file in test-schemas/*.json; do
     echo "Testing: $schema_file"
 
     # Generate Lean code
-    if ! lake exe schemaToJson "$schema_file" "$lean_file" 2>&1; then
+    if ! lake exe schemaToLean "$schema_file" "$lean_file" 2>&1; then
         echo "  ✗ FAILED: Code generation failed"
         FAILED=$((FAILED + 1))
         echo ""

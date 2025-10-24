@@ -28,10 +28,10 @@ Generate Lean type definitions from JSON Schema files:
 
 ```bash
 # Generate to stdout
-lake exe schemaToJson schema.json
+lake exe schemaToLean schema.json
 
 # Generate to file
-lake exe schemaToJson schema.json output.lean
+lake exe schemaToLean schema.json output.lean
 ```
 
 The code generator creates:
@@ -315,11 +315,11 @@ See [JsonSchemaTesting/Examples.lean](JsonSchemaTesting/Examples.lean) for more 
 
 - [ ] Proofs of termination/correctness
 - [x] Compile JSON Schema to Lean types like datamodel-code-generator (see Code Generation section)
-  - [x] CLI tool (`schemaToJson`)
+  - [x] CLI tool (`schemaToLean`)
   - [x] Structures, inductives, enums
   - [x] FromJson/ToJson instances
   - [x] Reference resolution and topological ordering
   - [x] Circular/mutual type support
-  - [ ] Array item type handling
-  - [ ] Tuple type handling
+  - [x] Array item type handling
+  - [x] Tuple type handling
 - [ ] Create JSON Schema from Lean types
