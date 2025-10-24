@@ -108,7 +108,7 @@ partial def mkConstructorArgs (obj : JsonSchema.SchemaObject) (typeName : String
     else
       makeOptionalFieldType fieldSchema typeName fieldName schemaToTypeDef
     allDependencies := allDependencies ++ fieldTypeDef.dependencies
-    let sanitizedName := (←read).config.sanitizeName fieldName
+    let sanitizedName := (←getConfig).sanitizeName fieldName
     argDecls := ("(" ++ sanitizedName ++ " : " ++ fieldTypeDef.typeDecl ++ ")") :: argDecls
     fieldInfosList := { origName := fieldName, sanitizedName := sanitizedName, typeDef := fieldTypeDef } :: fieldInfosList
 

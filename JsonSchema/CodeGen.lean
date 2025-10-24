@@ -60,7 +60,7 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen 
   -- and then parsing in the correct order (+ mutual types)
   parseInlineAbbrev s name <|>
   (match s with
-   | .Object obj =>
+   | .Object obj => withNewID s (
      -- Try enum first
      if let some enum := obj.enum then
        enumToInductive enum name
@@ -73,6 +73,7 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen 
      -- Finally try object/structure
      else
        objectToStructure obj name schemaToTypeDef
+   )
    | _ => .error "Cannot convert boolean schema to structure")
 
 /-- Main schema to TypeDefinition conversion -/
@@ -83,8 +84,9 @@ def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
     resolver := Resolver.empty.addSchema s,
     nameMap := .ofList [(⟨default, []⟩, name)]
     config := config
+    baseURI := default
   }
-  let typeDef ← (schemaToTypeDef s name).run ctx default
+  let typeDef ← (schemaToTypeDef s name).run ctx
 
   -- Flatten all nested dependencies
   let allDeps := flattenDependencies typeDef

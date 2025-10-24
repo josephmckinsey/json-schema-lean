@@ -24,7 +24,7 @@ partial def getFieldType (schema : JsonSchema.Schema) (parentTypeName : String) 
   -- Try to parse inline first (for simple types)
   parseInline schema prec <|> (do
     -- Complex type, needs a named definition
-    let typeName := generateFieldTypeName parentTypeName fieldName (← read).config
+    let typeName := generateFieldTypeName parentTypeName fieldName (← getConfig)
     let typeDef ← schemaToTypeDef schema typeName
     -- Return a TypeDefinition that references this named type
     return {
@@ -139,7 +139,7 @@ def mkStructToJson (typeName : String) (fieldInfos : List (String × String × T
 partial def objectToStructure (obj : JsonSchema.SchemaObject) (typeName : String)
     (schemaToTypeDef : JsonSchema.Schema → String → SchemaGen TypeDefinition)
     : SchemaGen TypeDefinition := do
-  let config ← read <&> (·.config)
+  let config ← getConfig
   -- Check that we have properties
   let properties := obj.properties.getD #[]
   if properties.isEmpty then

@@ -227,8 +227,7 @@ partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0)
     : SchemaGen TypeDefinition :=
   match s with
   | .Boolean b => pure { typeDecl := getBoolType b }
-  | .Object o => do
-  modify (fun baseURI ↦ (s.getID? baseURI).getD baseURI)
+  | .Object o => withNewID s do
   parseRef o <|>
   (parseConstant o : SchemaGen TypeDefinition) <|>
   (do isSimple o; parseSimpleType o prec) <|>

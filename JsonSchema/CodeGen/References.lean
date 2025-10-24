@@ -36,11 +36,11 @@ def schemaToFormat (schema : Schema) (typeName : String) (config : Config) := do
 
 def resolveRefToName (ref : LeanUri.URI ⊕ LeanUri.RelativeRef) : SchemaGen String := do
   let resolver ← CodeGenContext.resolver <$> read
-  let (rootURI, path) := resolver.resolvePath ((← get).resolveURIorRef ref)
+  let (rootURI, path) := resolver.resolvePath ((← getURI).resolveURIorRef ref)
   let name? ← read <&> fun ctx => ctx.nameMap.get? ⟨rootURI, path⟩
   match name? with
   | some name => pure name
-  | none => .error s!"Reference {←get} -> {rootURI} {path} could not be found."
+  | none => .error s!"Reference {←getURI} -> {rootURI} {path} could not be found."
 
 /-- Extract base name from URI path (e.g., "schemas/user.json" → "User")
     Similar to FilePath.fileStem but works on URI paths. -/

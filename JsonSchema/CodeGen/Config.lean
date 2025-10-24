@@ -63,15 +63,28 @@ structure CodeGenContext where
   nameMap : Std.HashMap SchemaID String
   /-- Configuration -/
   config : Config
+  /-- Base URI which gets updated as we traverse -/
+  baseURI : LeanUri.URI
 
-abbrev SchemaGen := ReaderT CodeGenContext (
-  StateT LeanUri.URI (Except String ·)
-)
+abbrev SchemaGen := ReaderT CodeGenContext (Except String ·)
 
-def SchemaGen.run (gen : SchemaGen α) (ctx : CodeGenContext) (baseURI : LeanUri.URI)
-    : Except String α := Prod.fst <$> ((ReaderT.run gen ctx).run baseURI)
+def SchemaGen.run (gen : SchemaGen α) (ctx : CodeGenContext)
+    : Except String α := ReaderT.run gen ctx
 
 def SchemaGen.noCtxRun? (gen : SchemaGen α) : Except String α :=
-  gen.run ⟨.empty, .emptyWithCapacity, {}⟩ default
+  gen.run ⟨.empty, .emptyWithCapacity, {}, default⟩
+
+def withNewID (s : Schema)
+    (g : SchemaGen α) : SchemaGen α :=
+  withReader (fun ctx => {
+    ctx with baseURI := (s.getID? ctx.baseURI).getD ctx.baseURI
+  }) g
+
+def getConfig : SchemaGen Config := read <&> CodeGenContext.config
+
+def getURI : SchemaGen LeanUri.URI := read <&> CodeGenContext.baseURI
+
+def getRefNameFromID (id : SchemaID) : SchemaGen (Option String) := read <&> fun ctx =>
+  ctx.nameMap.get? id
 
 end JsonSchema.CodeGen
