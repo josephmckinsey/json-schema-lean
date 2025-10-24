@@ -133,7 +133,13 @@ def getToJsonListSum (length : Nat) : Format :=
 def parseSimpleType (o : JsonSchema.SchemaObject) (prec : Nat := 0) : Except String TypeDefinition :=
   parseAnyType o.type <|>
   match (o.type.qsort (lt := fun x y => (compare x y).isLT)).toList with
-  -- Type classes can be derived
+  -- Special case: null type needs custom FromJson/ToJson instances
+  | [.NullType] => .ok {
+    typeDecl := "Unit"
+    fromJsonImpl := "if j == Json.null then .ok () else .error s!\"Expected null, got {j}\""
+    toJsonImpl := "Json.null"
+  }
+  -- Type classes can be derived for other single types
   | [x] => .ok { typeDecl := jsonTypeToLean x }
   | [.NullType, x] =>
     let inner := jsonTypeToLean x
@@ -146,7 +152,7 @@ def parseSimpleType (o : JsonSchema.SchemaObject) (prec : Nat := 0) : Except Str
     let typeDecl := if prec >= max_prec then ("(Option (" ++ sumType ++ "))") else "Option (" ++ sumType ++ ")"
     .ok {
       typeDecl := typeDecl
-      fromJsonImpl := Std.Format.text "Option.fromJson?" ++ .line ++
+      fromJsonImpl := Std.Format.text "Option.some" ++ .line ++ "<$>" ++ .line ++
         Std.Format.paren (getFromJsonListSum xs)
       toJsonImpl := Std.Format.text "@Option.toJson" ++ .line ++ "_" ++
         .line ++ f!"⟨fun x => {getToJsonListSum xs.length}⟩" ++
@@ -197,12 +203,12 @@ def parseInlineableAnyOf (variants : Array JsonSchema.Schema)
   let fromJsonImpl := Std.Format.joinSep fromJsonCases (" <|>" ++ Std.Format.line)
 
   -- Build ToJson instance that matches on the sum type
-  let toJsonCases := typeDefs.zipIdx.map fun (typeDef, idx) =>
+  let toJsonCases : List Format := typeDefs.zipIdx.map fun (typeDef, idx) =>
     let pattern : Format := Std.Format.group (Std.Format.nestD (depthToInlInr "x" typeDefs.length idx))
     let serializer := match typeDef.toJsonImpl with
       | some customToJson => customToJson
       | none => "toJson x"
-    "| " ++ pattern ++ " => " ++ serializer
+    "| " ++ pattern ++ " =>" ++ .group (.nestD (.line ++ serializer))
   let toJsonImpl := Std.Format.group ("match x with\n" ++ Std.Format.joinSep toJsonCases "\n")
 
   -- Only create extraDocComment if there are actual descriptions

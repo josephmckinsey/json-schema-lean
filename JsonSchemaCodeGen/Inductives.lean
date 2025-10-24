@@ -169,7 +169,20 @@ partial def variantToConstructor (variant : JsonSchema.Schema) (ctorName : Strin
         dependencies := deps,
         docComment := if combinedDoc.isEmpty then none else some combinedDoc
       }
-    .error s!"Could not construct argument for variant {ctorName} {variant} of {typeName}"
+    else
+      -- Complex type that can't be inlined: generate as named type dependency
+      -- This handles enums, nested oneOf/anyOf, and other complex schemas
+      let variantTypeName := typeName ++ ctorName.capitalize
+      let typeDef ← schemaToTypeDef variant variantTypeName
+      let ctorDecl := "| " ++ ctorName ++ " (val : " ++ variantTypeName ++ ")"
+      let docComment := variant.getDocString
+      return {
+        ctorName,
+        ctorDecl,
+        fieldInfos := none,
+        dependencies := [typeDef],
+        docComment := if docComment.isEmpty then none else some docComment
+      }
   | _ => .error s!"Could not construct argument for variant {ctorName} {variant} of {typeName}
   This error should be unreachable"
 
@@ -192,7 +205,7 @@ def mkOneOfFromJson (variantInfos : Array VariantInfo) (typeName : String) : For
         let parseExpr := match fieldInfo.typeDef.fromJsonImpl with
           | some customParser =>
             -- Custom parser expects 'j' to be bound to the field value
-            "let j := " ++ getField ++ "; " ++ customParser.pretty
+            "(let j := " ++ getField ++ "; " ++ customParser.pretty ++ ")"
           | none =>
             -- Use standard fromJson?
             "fromJson? (" ++ getField ++ ")"

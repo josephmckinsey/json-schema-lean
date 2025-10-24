@@ -41,8 +41,7 @@ def makeOptionalFieldType (schema : JsonSchema.Schema) (parentTypeName : String)
 
   -- If the inner type has custom FromJson/ToJson, wrap them with Option instances
   let fromJsonImpl := innerTypeDef.fromJsonImpl.map fun innerFromJson =>
-    Std.Format.text "Option.fromJson?" ++ Std.Format.line ++
-      Std.Format.paren innerFromJson
+    "Option.some" ++ .line ++ "<$>" ++ .line ++ Std.Format.paren innerFromJson
 
   let toJsonImpl := innerTypeDef.toJsonImpl.map fun innerToJson =>
     Std.Format.text "@Option.toJson" ++ Std.Format.line ++ "_" ++
@@ -85,7 +84,7 @@ def mkStructFromJson (typeName : String) (fieldInfos : List (String × String ×
     let parseExpr := match typeDef.fromJsonImpl with
       | some customParser =>
         -- Custom parser expects 'j' to be bound to the field value
-        "let j := " ++ getField ++ "; " ++ customParser.pretty
+        "(let j := " ++ getField ++ "; " ++ customParser.pretty ++ ")"
       | none =>
         -- Use standard fromJson?
         "fromJson? (" ++ getField ++ ")"

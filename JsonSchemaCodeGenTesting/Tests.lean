@@ -97,6 +97,17 @@ def simpleTest : TestM Unit := testFunction "abbreviation tests" do
   testEq "Inlined oneOf" (schemaToString testUnionSchema "StringOrInt")
     r#"abbrev StringOrInt := String ⊕ Int"#
 
+  -- Test null type with instances
+  let testNullSchema : JsonSchema.Schema := .Object { type := #[.NullType] }
+  testEq "Null type with instances" (schemaToString testNullSchema "NullType" { generateInstances := true })
+    r#"abbrev NullType := Unit
+
+instance : FromJson NullType where
+  fromJson? j := if j == Json.null then .ok () else .error s!"Expected null, got {j}"
+
+instance : ToJson NullType where
+  toJson x := Json.null"#
+
 def testStructWithOptionalSum : JsonSchema.Schema := .Object {
   type := #[.ObjectType]
   required := some #["id"]
@@ -228,6 +239,19 @@ structure NestedUnion where
   toJson x := match x with
     | .hello => Json.str "hello"
     | .hi => Json.str "hi""#
+
+  -- Test oneOf with enum variant (should create enum as dependency)
+  let testOneOfWithEnum : JsonSchema.Schema := .Object {
+    oneOf := some #[
+      .Object { type := #[.StringType] },
+      .Object { enum := some #[.str "center", .str "extent"] }
+    ]
+  }
+  testEq "oneOf with enum variant"
+    (schemaToString testOneOfWithEnum "MyType")
+    r#"inductive MyTypeCase1 where | center | extent
+
+inductive MyType where | case0 (val : String) | case1 (val : MyTypeCase1)"#
 
 def oneOfFromJsonToJsonTests : TestM Unit := testFunction "oneOf FromJson/ToJson tests" do
   -- Test FromJson instance generation for oneOf with simple types
@@ -411,9 +435,10 @@ instance : ToJson Person where
 instance : FromJson Record where
   fromJson? j := do
     let id ← fromJson? (j.getObjValD "id")
-    let value ← let j := j.getObjValD "value"; Option.fromJson?
+    let value ← (let j := j.getObjValD "value"; Option.some
+    <$>
     ((fun x => .inl x) <$> ((inferInstance : FromJson String).fromJson? j) <|>
-     (fun x => .inr (x)) <$> ((inferInstance : FromJson Float).fromJson? j))
+     (fun x => .inr (x)) <$> ((inferInstance : FromJson Float).fromJson? j)))
     .ok { id, value }
 
 instance : ToJson Record where
