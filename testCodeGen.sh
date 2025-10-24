@@ -8,7 +8,9 @@ echo ""
 
 # Create temporary directory for generated files
 TEMP_DIR=$(mktemp -d)
-trap "rm -rf $TEMP_DIR" EXIT
+# Only clean up if all tests pass (will be set later)
+CLEANUP_ON_EXIT=false
+trap 'if [ "$CLEANUP_ON_EXIT" = true ]; then rm -rf "$TEMP_DIR"; fi' EXIT
 
 # Build the code generator
 echo "Building schemaToJson..."
@@ -66,8 +68,11 @@ echo ""
 
 if [ $FAILED -eq 0 ]; then
     echo "✓ All tests passed!"
+    CLEANUP_ON_EXIT=true
     exit 0
 else
     echo "✗ Some tests failed"
+    echo ""
+    echo "Generated files are preserved in: $TEMP_DIR"
     exit 1
 fi

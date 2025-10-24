@@ -83,25 +83,15 @@ def formatTypeDefWithInstances (td : TypeDefinition) (config : Config) : Format 
     -- Without instances, just return the type declaration
     td.typeDecl
   else Id.run do
-    -- With instances enabled, add custom instances or deriving clauses
-    let mut deriveInfo : Array Format := #[]
+    -- With instances enabled, add custom instances
     let mut instances : Array Format := #[]
     if let some fromImpl := td.fromJsonImpl then
       instances := instances.push fromImpl
-    else
-      deriveInfo := deriveInfo.push "FromJson"
     if let some toImpl := td.toJsonImpl then
       instances := instances.push toImpl
-    else
-      deriveInfo := deriveInfo.push "ToJson"
 
-    let deriveStr : Format := if deriveInfo.isEmpty then
-      .nil
-    else "\n" ++ .group (.nestD (
-        "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
-      ))
     let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
-    return td.typeDecl ++ deriveStr ++ instanceStr
+    return td.typeDecl ++ instanceStr
 
 /-- Generate a mutual block for an SCC with multiple schemas -/
 def generateMutualBlock (scc : Array Nat) (namedSchemas : Array SchemaID)

@@ -50,7 +50,10 @@ def isSimple (o : JsonSchema.SchemaObject) : Except String Unit := do
   if o.anyOf.isSome then .error "anyOf is not simple"
   if o.oneOf.isSome then .error "oneOf is not simple"
   if o.items.isSome then .error "items array is not simple"
-  if o.type.contains .ObjectType then .error "object type possible"
+  -- Objects with properties are not simple (need to be structures)
+  -- But objects with no properties can fall back to Json
+  if o.type.contains .ObjectType && (o.properties.getD #[] |>.isEmpty |>.not) then
+    .error "object type possible"
   -- These don't necessary make a type complex, but it
   -- probably should be a struct or inductive if these exist.
   if o.contains.isSome then .error "contains is not simple"
