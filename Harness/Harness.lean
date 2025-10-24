@@ -1,5 +1,5 @@
 import Harness.Command
-import JsonSchema.Compiler
+import JsonSchema.Validation
 import Lean.Data.Json
 open Lean
 open JsonSchema
@@ -12,7 +12,7 @@ def runTest (j: Json) : Except String String := do
       let seq := run.seq
       let tests := run.case.tests
       let schema := run.case.schema
-      let schema_compiled <- compile schema
+      let schema_compiled <- fromJson? schema
       let result: Array Valid := tests.map (fun t =>
         let valid : ValidationError := validate schema_compiled t.instance_
         match valid with

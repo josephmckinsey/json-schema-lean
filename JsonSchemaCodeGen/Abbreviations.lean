@@ -18,12 +18,12 @@ def mkAbbrevTypeDefinition (s : JsonSchema.Schema) (name : String) (form : TypeD
           f!"abbrev {name} :=" ++ .line ++ form.typeDecl
           ))
     fromJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
-      .nestD ("instance : FromJson {name} where\n" ++
+      .nestD (f!"instance : FromJson {name} where\n" ++
         .group (.nestD "fromJson? j :=" ++ .line ++ fromJsonImpl)
       )
-    toJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
-      .nestD ("instance : ToJson {name} where\n" ++
-        .group (.nestD "toJson x :=" ++ .line ++ fromJsonImpl)
+    toJsonImpl := form.toJsonImpl <&> fun toJsonImpl =>
+      .nestD (f!"instance : ToJson {name} where\n" ++
+        .group (.nestD "toJson x :=" ++ .line ++ toJsonImpl)
       )
     dependencies := form.dependencies
   }

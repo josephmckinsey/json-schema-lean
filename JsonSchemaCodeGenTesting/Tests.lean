@@ -526,6 +526,55 @@ abbrev StringList := Array (String ⊕ Int)"#
 /-- A list of people -/
 abbrev PersonList := Array PersonListItems"#
 
+-- Tuple Tests
+def simpleTupleSchema : JsonSchema.Schema :=
+  .Object {
+    description := "A pair of string and number"
+    type := #[.ArrayType]
+    items := some (.Tuple #[
+      .Object { type := #[.StringType] },
+      .Object { type := #[.IntegerType] }
+    ])
+    minItems := some 2
+    maxItems := some 2
+  }
+
+def tripleTupleSchema : JsonSchema.Schema :=
+  .Object {
+    description := "A triple with mixed types"
+    type := #[.ArrayType]
+    items := some (.Tuple #[
+      .Object { type := #[.StringType] },
+      .Object { type := #[.IntegerType] },
+      .Object { type := #[.BooleanType] }
+    ])
+    minItems := some 3
+    maxItems := some 3
+  }
+
+def tupleWithSumSchema : JsonSchema.Schema :=
+  .Object {
+    type := #[.ArrayType]
+    items := some (.Tuple #[
+      .Object { type := #[.StringType] },
+      .Object { type := #[.StringType, .IntegerType] }
+    ])
+    minItems := some 2
+    maxItems := some 2
+  }
+
+def tupleTests : TestM Unit := testFunction "Tuple Tests" do
+  testEq "simple tuple (pair)" (schemaToString simpleTupleSchema "StringIntPair")
+    r#"/-- A pair of string and number -/
+abbrev StringIntPair := String × Int"#
+
+  testEq "triple tuple" (schemaToString tripleTupleSchema "Triple")
+    r#"/-- A triple with mixed types -/
+abbrev Triple := String × Int × Bool"#
+
+  testEq "tuple with sum type" (schemaToString tupleWithSumSchema "TupleWithSum")
+    r#"abbrev TupleWithSum := String × (String ⊕ Int)"#
+
 def generatedCodeTests : TestM Unit := testFunction "generated code compilation tests" do
   -- Test that parsing works correctly
   let stringParse : Except String TestStringOrInt := fromJson? (Json.str "hello")
@@ -562,6 +611,7 @@ def allCodeGenTests : TestM Unit := group "CodeGen Tests" do
   parseSimpleTypeTests
   descriptionTests
   arrayTests
+  tupleTests
 
 def hmm := Option (String ⊕ Int)
 

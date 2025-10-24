@@ -154,7 +154,8 @@ def parseSimpleType (o : JsonSchema.SchemaObject) (prec : Nat := 0) : Except Str
     }
   | xs =>
     let sumType := String.intercalate " ⊕ " (xs.map jsonTypeToLean)
-    let typeDecl := if prec >= max_prec then "(" ++ sumType ++ ")" else sumType
+    -- ⊕ has precedence 30, so parenthesize if context has precedence > 30
+    let typeDecl := if prec > 30 then "(" ++ sumType ++ ")" else sumType
     .ok {
       typeDecl := typeDecl
       fromJsonImpl := getFromJsonListSum xs
@@ -183,7 +184,8 @@ def parseInlineableAnyOf (variants : Array JsonSchema.Schema)
 
   -- Build sum type from all variant type declarations
   let sumType := String.intercalate " ⊕ " (typeDefs.map (·.typeDecl.pretty))
-  let typeDecl := if prec >= max_prec then "(" ++ sumType ++ ")" else sumType
+  -- ⊕ has precedence 30, so parenthesize if context has precedence > 30
+  let typeDecl := if prec > 30 then "(" ++ sumType ++ ")" else sumType
 
   -- Build FromJson instance that tries each variant in order
   let fromJsonCases := typeDefs.zipIdx.map fun (typeDef, idx) =>
@@ -258,6 +260,137 @@ def parseInlineableArray (itemSchema : JsonSchema.Schema)
     extraDocComment := itemTypeDef.extraDocComment
   }
 
+def buildTupleFormat (vars : List Format) : Format :=
+  match vars with
+  | [] => "()"
+  | [v] => v
+  | vars => "(" ++ .nestD (Std.Format.joinSep vars ("," ++ .line)) ++ ")"
+
+/-- Generate a FromJson instance for a tuple type.
+
+    Generates code like:
+    ```
+    do
+      let x0 ← fromJson? <$> j.getArrVal? 0
+      let x1 ← fromJson? <$> j.getArrval? 1
+      ...
+      .ok (x0, x1, ...)
+    ```
+-/
+def getTupleFromJson (itemTypeDefs : List TypeDefinition) : Option Format :=
+  let len := itemTypeDefs.length
+  if len < 2 then none
+  else
+    let varNames := List.range len |>.map (fun i => s!"x{i}")
+
+    let parseStmts : List Format := (itemTypeDefs.zip varNames).zipIdx.map fun ((typeDef, varName), idx) =>
+      match typeDef.fromJsonImpl with
+      | some customParser =>
+        s!"let {varName} ← " ++ .group (.nestD ("(" ++ .line ++
+          "fun j =>" ++ .line ++ customParser ++ .line ++
+        s!") =<< (j.getArrVal? {idx})"))
+      | none =>
+        s!"let {varName} ← fromJson? =<< j.getArrVal? {idx}"
+
+    let tupleExpr := buildTupleFormat (varNames.map .text)
+
+    let fullParser :=
+      .nestD ("do\n" ++
+        Std.Format.joinSep parseStmts "\n" ++ "\n" ++
+        s!".ok {tupleExpr}")
+
+    some fullParser
+
+/-- Generate a ToJson instance for a tuple type.
+
+    Generates code like:
+    ```
+    match x with
+    | (x0, x1, ...) => Json.arr #[toJson x0, toJson x1, ...]
+    ```
+-/
+def getTupleToJson (itemTypeDefs : List TypeDefinition) : Option Format :=
+  let len := itemTypeDefs.length
+  if len < 2 then none
+  else
+    let varNames := List.range len |>.map (fun i => s!"x{i}")
+
+    -- Build the pattern using buildTupleFormat
+    let pattern := buildTupleFormat (varNames.map .text)
+
+    -- Generate serialization for each element
+    let serializations : List Format := itemTypeDefs.zipIdx.map fun (typeDef, idx) =>
+      let varName := s!"x{idx}"
+      match typeDef.toJsonImpl with
+      | some customSerializer =>
+        -- Use custom serializer, substituting x for the variable
+        .group (.paren (s!"let x := {varName};" ++ .line ++ customSerializer))
+      | none =>
+        s!"toJson {varName}"
+
+    let arrayElems := Std.Format.joinSep serializations ("," ++ .line)
+
+    let fullSerializer :=
+      .nestD ("match x with\n| " ++ pattern ++ " => Json.arr #[" ++ arrayElems ++ "]")
+
+    some fullSerializer
+
+/-- Try to parse a tuple type (fixed-length array).
+
+    This handles: {"type": "array", "items": [schema1, schema2, ...], "minItems": n, "maxItems": n}
+    → Type1 × Type2 × ...
+
+    Only succeeds if:
+    - items is a Tuple (array of schemas)
+    - minItems == maxItems == array length (fixed size)
+    - All item schemas can be parsed inline
+-/
+def parseInlineableTuple (itemSchemas : Array JsonSchema.Schema) (minItems maxItems : Option Nat)
+    (recurse : JsonSchema.Schema → Nat → SchemaGen TypeDefinition)
+    (prec : Nat := 0) : SchemaGen TypeDefinition := do
+  -- Check that this is a fixed-length tuple
+  let len := itemSchemas.size
+  if len < 2 then
+    .error "Tuple must have at least 2 items"
+
+  match minItems, maxItems with
+  | some min, some max =>
+    if min != len || max != len then
+      .error s!"minItems ({min}) and maxItems ({max}) must equal items length ({len})"
+  | _, _ =>
+    .error "Tuple requires both minItems and maxItems to be set"
+
+  -- Parse all item schemas
+  let mut itemTypeDefsAux : List TypeDefinition := []
+  let mut allDeps : List TypeDefinition := []
+  for itemSchema in itemSchemas do
+    let itemTypeDef ← recurse itemSchema 35 -- precedence for ×
+    itemTypeDefsAux := itemTypeDef :: itemTypeDefsAux
+    allDeps := itemTypeDef.dependencies ++ allDeps
+
+  let itemTypeDefs := itemTypeDefsAux.reverse
+
+  -- Build right-nested tuple type: A × B × C is actually A × (B × C)
+  let buildTupleType (types : List TypeDefinition) : Format :=
+    match types with
+    | [] => "Unit"  -- shouldn't happen
+    | types => Std.Format.joinSep (types.map fun t => t.typeDecl) " × "
+
+  let tupleType := buildTupleType itemTypeDefs
+  let typeDecl := if prec >= 35 then "(" ++ tupleType ++ ")" else tupleType
+
+  -- Always generate custom instances for tuples
+  let fromJsonImpl := getTupleFromJson itemTypeDefs
+  let toJsonImpl := getTupleToJson itemTypeDefs
+
+  pure {
+    typeDecl := typeDecl
+    fromJsonImpl := fromJsonImpl
+    toJsonImpl := toJsonImpl
+    dependencies := allDeps.reverse
+    extraDocComment := none
+  }
+
 /-- Inline types such as String ⊕ Int do not need complicated definitions.
     The prec parameter determines whether to add parentheses for function application.
 
@@ -277,6 +410,9 @@ partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0)
   (if let some oneOf := o.oneOf then
     parseInlineableOneOf oneOf (fun s p => parseInline s p) prec
   else .error "no oneOf") <|>
+  (if let some (.Tuple itemSchemas) := o.items then
+    parseInlineableTuple itemSchemas o.minItems o.maxItems (fun s p => parseInline s p) prec
+  else .error "no inlineable tuple") <|>
   (if let some (.Single itemSchema) := o.items then
     parseInlineableArray itemSchema (fun s p => parseInline s p) prec
   else .error "no inlineable array")
