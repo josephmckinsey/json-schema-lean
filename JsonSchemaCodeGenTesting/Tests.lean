@@ -575,6 +575,66 @@ abbrev Triple := String × Int × Bool"#
   testEq "tuple with sum type" (schemaToString tupleWithSumSchema "TupleWithSum")
     r#"abbrev TupleWithSum := String × (String ⊕ Int)"#
 
+-- Tuple tests with complex items (using parseTupleAbbrev)
+def complexTupleSchema : JsonSchema.Schema :=
+  .Object {
+    description := "A tuple with a structure"
+    type := #[.ArrayType]
+    items := some (.Tuple #[
+      .Object { type := #[.StringType] },
+      .Object {
+        type := #[.ObjectType]
+        required := some #["value"]
+        properties := some #[
+          ("value", .Object { type := #[.IntegerType] })
+        ]
+      }
+    ])
+    minItems := some 2
+    maxItems := some 2
+  }
+
+def mixedTupleSchema : JsonSchema.Schema :=
+  .Object {
+    description := "Mixed inline and named"
+    type := #[.ArrayType]
+    items := some (.Tuple #[
+      .Object { type := #[.StringType] },
+      .Object {
+        type := #[.ObjectType]
+        required := some #["x"]
+        properties := some #[
+          ("x", .Object { type := #[.IntegerType] })
+        ]
+      },
+      .Object { type := #[.BooleanType] }
+    ])
+    minItems := some 3
+    maxItems := some 3
+  }
+
+def tupleAbbrevTests : TestM Unit := testFunction "Tuple Abbrev Tests" do
+  -- Test tuple with complex item (should create named dependency)
+  let complexResult := schemaToString complexTupleSchema "ComplexTuple"
+  testEq "tuple with structure creates dependency"
+    (complexResult.containsSubstr "structure ComplexTupleItem1")
+    true
+  testEq "tuple with structure has correct type"
+    (complexResult.containsSubstr "abbrev ComplexTuple := String × ComplexTupleItem1")
+    true
+
+  -- Test mixed tuple (inline simple types, named complex)
+  let mixedResult := schemaToString mixedTupleSchema "MixedTuple" {generateInstances := true}
+  testEq "mixed tuple creates dependency"
+    (mixedResult.containsSubstr "structure MixedTupleItem1")
+    true
+  testEq "mixed tuple has correct type"
+    (mixedResult.containsSubstr "abbrev MixedTuple := String × MixedTupleItem1 × Bool")
+    true
+  testEq "mixed tuple has clean instances"
+    (mixedResult.containsSubstr "let x0 ← fromJson? =<< j.getArrVal? 0")
+    true
+
 def generatedCodeTests : TestM Unit := testFunction "generated code compilation tests" do
   -- Test that parsing works correctly
   let stringParse : Except String TestStringOrInt := fromJson? (Json.str "hello")
@@ -612,6 +672,7 @@ def allCodeGenTests : TestM Unit := group "CodeGen Tests" do
   descriptionTests
   arrayTests
   tupleTests
+  tupleAbbrevTests
 
 def hmm := Option (String ⊕ Int)
 

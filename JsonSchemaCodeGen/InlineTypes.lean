@@ -266,6 +266,65 @@ def buildTupleFormat (vars : List Format) : Format :=
   | [v] => v
   | vars => "(" ++ .nestD (Std.Format.joinSep vars ("," ++ .line)) ++ ")"
 
+/-- Generate a simple FromJson instance for a tuple with named item types.
+
+    This version assumes all item types already have FromJson instances defined,
+    so it just calls `fromJson?` for each element.
+
+    Generates code like:
+    ```
+    do
+      let x0 ← fromJson? =<< j.getArrVal? 0
+      let x1 ← fromJson? =<< j.getArrVal? 1
+      ...
+      .ok (x0, x1, ...)
+    ```
+-/
+def getTupleFromJsonSimple (len : Nat) : Option Format :=
+  if len < 2 then none
+  else
+    let varNames := List.range len |>.map (fun i => s!"x{i}")
+
+    let parseStmts : List Format := varNames.zipIdx.map fun (varName, idx) =>
+      s!"let {varName} ← fromJson? =<< j.getArrVal? {idx}"
+
+    let tupleExpr := buildTupleFormat (varNames.map .text)
+
+    let fullParser :=
+      .nestD ("do\n" ++
+        Std.Format.joinSep parseStmts "\n" ++ "\n" ++
+        s!".ok {tupleExpr}")
+
+    some fullParser
+
+/-- Generate a simple ToJson instance for a tuple with named item types.
+
+    This version assumes all item types already have ToJson instances defined,
+    so it just calls `toJson` for each element.
+
+    Generates code like:
+    ```
+    match x with
+    | (x0, x1, ...) => Json.arr #[toJson x0, toJson x1, ...]
+    ```
+-/
+def getTupleToJsonSimple (len : Nat) : Option Format :=
+  if len < 2 then none
+  else
+    let varNames := List.range len |>.map (fun i => s!"x{i}")
+
+    let pattern := buildTupleFormat (varNames.map .text)
+
+    let serializations : List Format := varNames.map fun varName =>
+      s!"toJson {varName}"
+
+    let arrayElems := Std.Format.joinSep serializations ("," ++ .line)
+
+    let fullSerializer :=
+      .nestD ("match x with\n| " ++ pattern ++ " => Json.arr #[" ++ arrayElems ++ "]")
+
+    some fullSerializer
+
 /-- Generate a FromJson instance for a tuple type.
 
     Generates code like:
