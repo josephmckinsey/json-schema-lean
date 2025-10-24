@@ -208,4 +208,103 @@ def buildRefGraph (namedSchemas : Array SchemaID) (nameMap : Std.HashMap SchemaI
 
   .ok { adjList, index }
 
+/-!
+## Phase 3: Tarjan's SCC Algorithm
+
+Detect strongly connected components (SCCs) in the reference graph to identify
+circular dependencies. SCCs with size > 1 will be generated as mutual blocks.
+
+Based on Tarjan's algorithm: https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
+Adapted from: https://github.com/leanprover-community/mathlib4/blob/master/Mathlib/Tactic/Order/Graph/Tarjan.lean
+-/
+
+/-- State for Tarjan's SCC algorithm -/
+structure TarjanState where
+  /-- DFS discovery index for each vertex (0 means unvisited) -/
+  index : Array Nat
+  /-- Lowest index reachable from this vertex -/
+  lowlink : Array Nat
+  /-- Stack of vertices being explored -/
+  stack : Array Nat
+  /-- Whether each vertex is currently on the stack -/
+  onStack : Array Bool
+  /-- Current time/index counter -/
+  time : Nat
+  /-- Collected SCCs (in reverse topological order) -/
+  sccs : Array (Array Nat) := #[]
+
+/-- Initialize Tarjan state for a graph with n vertices -/
+def TarjanState.init (n : Nat) : TarjanState :=
+  { index := Array.replicate n 0
+  , lowlink := Array.replicate n 0
+  , stack := #[]
+  , onStack := Array.replicate n false
+  , time := 1  -- Start at 1 so 0 means unvisited
+  , sccs := #[] }
+
+/-- Tarjan's DFS visit function -/
+partial def tarjanVisit (adjList : Array (Array Nat)) (v : Nat) (state : TarjanState) : TarjanState :=
+  -- Set the depth index for v
+  let state := { state with
+    index := state.index.set! v state.time
+    lowlink := state.lowlink.set! v state.time
+    time := state.time + 1
+    stack := state.stack.push v
+    onStack := state.onStack.set! v true
+  }
+
+  -- Consider successors of v
+  let neighbors := adjList[v]!
+  let state := neighbors.foldl (init := state) fun state w =>
+    if state.index[w]! == 0 then
+      -- Successor w has not yet been visited; recurse on it
+      let state := tarjanVisit adjList w state
+      { state with lowlink := state.lowlink.set! v (min state.lowlink[v]! state.lowlink[w]!) }
+    else if state.onStack[w]! then
+      -- Successor w is on stack and hence in the current SCC
+      { state with lowlink := state.lowlink.set! v (min state.lowlink[v]! state.index[w]!) }
+    else
+      -- Successor w is already in a different SCC
+      state
+
+  -- If v is a root node, pop the stack and collect the SCC
+  if state.lowlink[v]! == state.index[v]! then
+    let (scc, stack, onStack) := popSCC state.stack state.onStack v #[]
+    { state with
+      stack := stack
+      onStack := onStack
+      sccs := state.sccs.push scc
+    }
+  else
+    state
+where
+  /-- Pop vertices from stack until we reach v, collecting the SCC -/
+  popSCC (stack : Array Nat) (onStack : Array Bool) (v : Nat) (scc : Array Nat) : Array Nat × Array Nat × Array Bool :=
+    match stack.back? with
+    | none => (scc, stack, onStack)  -- Should never happen
+    | some w =>
+        let stack := stack.pop
+        let onStack := onStack.set! w false
+        let scc := scc.push w
+        if w == v then
+          (scc, stack, onStack)
+        else
+          popSCC stack onStack v scc
+
+/-- Find all strongly connected components using Tarjan's algorithm.
+    Returns SCCs in reverse topological order (dependencies appear before dependents). -/
+def findSCCs (graph : RefGraph) : Array (Array Nat) :=
+  let n := graph.adjList.size
+  let state := TarjanState.init n
+
+  -- Visit all vertices in order
+  let state := List.range n |>.foldl (init := state) fun state v =>
+    if state.index[v]! == 0 then
+      tarjanVisit graph.adjList v state
+    else
+      state
+
+  -- SCCs are already in reverse topological order
+  state.sccs
+
 end JsonSchema.CodeGen

@@ -131,4 +131,114 @@ def schemaToString (s : JsonSchema.Schema) (typeName : String)
   | .ok f => f.pretty
   | .error e => s!"ERROR: {e}"
 
+/-!
+## Multi-Schema Code Generation with References
+
+Generate code for multiple schemas with $ref support, handling circular dependencies
+via mutual blocks.
+-/
+
+/-- Format a single TypeDefinition with its instances -/
+def formatTypeDefWithInstances (td : TypeDefinition) (config : Config) : Format := Id.run do
+  let mut deriveInfo : Array Format := #[]
+  let mut instances : Array Format := #[]
+  if let some fromImpl := td.fromJsonImpl then
+    instances := instances.push fromImpl
+  else if config.generateInstances then
+    deriveInfo := deriveInfo.push "FromJson"
+  if let some toImpl := td.toJsonImpl then
+    instances := instances.push toImpl
+  else if config.generateInstances then
+    deriveInfo := deriveInfo.push "ToJson"
+
+  let deriveStr : Format := if deriveInfo.isEmpty then
+    .nil
+  else "\n" ++ .group (.nestD (
+      "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
+    ))
+  let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
+  return td.typeDecl ++ deriveStr ++ instanceStr
+
+/-- Generate a mutual block for an SCC with multiple schemas -/
+def generateMutualBlock (scc : Array Nat) (namedSchemas : Array SchemaID)
+    (ctx : CodeGenContext) : Except String Format := do
+  let mut typeDefs : Array TypeDefinition := #[]
+
+  for idx in scc do
+    let schemaID := namedSchemas[idx]!
+    let schema? := ctx.resolver.getSchemaFromRoot? schemaID.baseURI schemaID.path
+    let schema ← match schema? with
+      | some s => .ok s
+      | none => .error s!"Schema not found at {schemaID.baseURI} {schemaID.path}"
+
+    let name? := ctx.nameMap.get? schemaID
+    let name ← match name? with
+      | some n => .ok n
+      | none => .error s!"No name found for schema {schemaID.baseURI} {schemaID.path}"
+
+    let typeDef ← (schemaToTypeDef schema name).run ctx
+    typeDefs := typeDefs.push typeDef
+
+  -- Build mutual block
+  let declsWithInstances := typeDefs.map (formatTypeDefWithInstances · ctx.config)
+  .ok (.group (.nestD ("mutual\n" ++ Std.Format.joinSep declsWithInstances.toList "\n\n" ++ "\nend")))
+
+/-- Generate code for all schemas in a Resolver with proper topological ordering -/
+def generateAllSchemas (resolver : Resolver) (config : Config := {}) : Except String String := do
+  -- Phase 1: Collect and name all schemas
+  let nameMap := mkNameMap resolver config
+
+  -- Get all schema IDs and sort them for stable ordering
+  let namedSchemas := nameMap.toList.map (·.1) |>.toArray
+  let namedSchemas := namedSchemas.qsort (fun a b =>
+    let uriCmp := toString a.baseURI < toString b.baseURI
+    if toString a.baseURI == toString b.baseURI then
+      JsonPointer.toString a.path < JsonPointer.toString b.path
+    else uriCmp
+  )
+
+  -- Phase 2: Build reference graph
+  let refGraph ← buildRefGraph namedSchemas nameMap resolver
+
+  -- Phase 3: Compute SCCs in topological order
+  let sccs := findSCCs refGraph
+
+  -- Phase 4: Generate code for each SCC
+  let ctx : CodeGenContext := {
+    resolver := resolver
+    nameMap := nameMap
+    config := config
+    baseURI := default
+  }
+  let mut outputs : Array Format := #[]
+
+  for scc in sccs do
+    let output ← if scc.size == 1 then
+      -- Single schema: standalone definition
+      let schemaID := namedSchemas[scc[0]!]!
+      let schema? := resolver.getSchemaFromRoot? schemaID.baseURI schemaID.path
+      let schema ← match schema? with
+        | some s => .ok s
+        | none => .error s!"Schema not found at {schemaID.baseURI} {schemaID.path}"
+
+      let name? := nameMap.get? schemaID
+      let name ← match name? with
+        | some n => .ok n
+        | none => .error s!"No name found for schema {schemaID.baseURI} {schemaID.path}"
+
+      let typeDef ← (schemaToTypeDef schema name).run ctx
+
+      -- Include dependencies
+      let allDeps := flattenDependencies typeDef
+      let depFormats := allDeps.map (formatTypeDefWithInstances · config)
+      let mainFormat := formatTypeDefWithInstances typeDef config
+      .ok (Std.Format.joinSep (depFormats ++ [mainFormat]) "\n\n")
+    else
+      -- Multiple schemas: mutual block
+      generateMutualBlock scc namedSchemas ctx
+
+    outputs := outputs.push output
+
+  .ok (Std.Format.joinSep outputs.toList "\n\n" |>.pretty)
+
 end JsonSchema.CodeGen

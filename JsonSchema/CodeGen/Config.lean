@@ -53,7 +53,7 @@ def capitalize (s : String) : String :=
 structure SchemaID where
   baseURI : LeanUri.URI
   path : List String
-deriving BEq, Hashable
+deriving BEq, Hashable, Inhabited
 
 instance : ToString SchemaID where
   toString id := (toString id.baseURI) ++ "#" ++ JsonPointer.toString id.path

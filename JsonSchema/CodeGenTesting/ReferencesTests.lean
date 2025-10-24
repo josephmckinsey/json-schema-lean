@@ -363,6 +363,256 @@ def buildRefGraphTests : TestM Unit := testFunction "buildRefGraph tests" do
         #[]
   | .error e => test s!"Test failed: {e}" false; return
 
+-- Test SCC detection
+def findSCCsTests : TestM Unit := testFunction "findSCCs tests" do
+  -- Test 1: Acyclic graph (A ← B, no cycles)
+  -- Graph: 0 → [], 1 → [], 2 → [1]
+  let resolver1 := Resolver.empty.addSchema schemaWithSimpleRef (testURI "/ref.json")
+  let nameMap1 := mkNameMap resolver1
+  let namedSchemas1 := #[
+    SchemaID.mk (testURI "/ref.json") [],
+    SchemaID.mk (testURI "/ref.json") ["definitions", "A"],
+    SchemaID.mk (testURI "/ref.json") ["definitions", "B"]
+  ]
+
+  match buildRefGraph namedSchemas1 nameMap1 resolver1 with
+  | .ok graph =>
+      let sccs := findSCCs graph
+      testEq "Acyclic graph has 3 SCCs"
+        sccs.size
+        3
+      -- Each node should be its own SCC
+      testEq "Each SCC has size 1"
+        (sccs.all (·.size == 1))
+        true
+      -- Check topological order: dependencies come before dependents
+      -- A (index 1) should come before B (index 2) because B → A
+      let aIndex := sccs.findIdx? (fun scc => scc.contains 1)
+      let bIndex := sccs.findIdx? (fun scc => scc.contains 2)
+      match aIndex, bIndex with
+      | some ai, some bi =>
+          test "A comes before B in topological order"
+            (ai < bi)
+      | _, _ => test "Failed to find A or B in SCCs" false
+  | .error e => test s!"Test failed: {e}" false; return
+
+  -- Test 2: Simple cycle (Node → Node)
+  let resolver2 := Resolver.empty.addSchema schemaWithCircularRef (testURI "/circular.json")
+  let nameMap2 := mkNameMap resolver2
+  let namedSchemas2 := #[
+    SchemaID.mk (testURI "/circular.json") [],
+    SchemaID.mk (testURI "/circular.json") ["definitions", "Node"]
+  ]
+
+  match buildRefGraph namedSchemas2 nameMap2 resolver2 with
+  | .ok graph =>
+      let sccs := findSCCs graph
+      testEq "Circular graph has 2 SCCs"
+        sccs.size
+        2
+      -- Root should be its own SCC, Node should be its own SCC (self-loop)
+      testEq "Self-referencing node forms SCC of size 1"
+        (sccs.any (fun scc => scc.size == 1 && scc.contains 1))
+        true
+  | .error e => test s!"Test failed: {e}" false; return
+
+  -- Test 3: Chain (A → B → C)
+  let resolver3 := Resolver.empty.addSchema schemaWithChainedRefs (testURI "/chain.json")
+  let nameMap3 := mkNameMap resolver3
+  let namedSchemas3 := #[
+    SchemaID.mk (testURI "/chain.json") [],
+    SchemaID.mk (testURI "/chain.json") ["definitions", "A"],
+    SchemaID.mk (testURI "/chain.json") ["definitions", "B"],
+    SchemaID.mk (testURI "/chain.json") ["definitions", "C"]
+  ]
+
+  match buildRefGraph namedSchemas3 nameMap3 resolver3 with
+  | .ok graph =>
+      let sccs := findSCCs graph
+      testEq "Chain graph has 4 SCCs"
+        sccs.size
+        4
+      -- Each node should be its own SCC
+      testEq "Each SCC has size 1"
+        (sccs.all (·.size == 1))
+        true
+      -- Check topological order: C before B before A
+      let aIndex := sccs.findIdx? (fun scc => scc.contains 1)
+      let bIndex := sccs.findIdx? (fun scc => scc.contains 2)
+      let cIndex := sccs.findIdx? (fun scc => scc.contains 3)
+      match aIndex, bIndex, cIndex with
+      | some ai, some bi, some ci =>
+          test "C comes before B"
+            (ci < bi)
+          test "B comes before A"
+            (bi < ai)
+      | _, _, _ => test "Failed to find A, B, or C in SCCs" false
+  | .error e => test s!"Test failed: {e}" false; return
+
+-- Test schema with a real cycle (A → B → A)
+def schemaWithCycle : Schema := .Object {
+  type := #[.ObjectType]
+  definitions := some (.ofList [
+    ("A", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/B")
+    }),
+    ("B", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/A")
+    })
+  ])
+}
+
+-- Test schema with complex SCC (A → B → C → A)
+def schemaWithComplexCycle : Schema := .Object {
+  type := #[.ObjectType]
+  definitions := some (.ofList [
+    ("A", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/B")
+    }),
+    ("B", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/C")
+    }),
+    ("C", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/A")
+    })
+  ])
+}
+
+-- Test schema with multiple independent cycles
+def schemaWithMultipleCycles : Schema := .Object {
+  type := #[.ObjectType]
+  definitions := some (.ofList [
+    -- Cycle 1: A ↔ B
+    ("A", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/B")
+    }),
+    ("B", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/A")
+    }),
+    -- Cycle 2: C ↔ D
+    ("C", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/D")
+    }),
+    ("D", Schema.Object {
+      type := #[.ObjectType]
+      ref := some (mkRef "#/definitions/C")
+    })
+  ])
+}
+
+def findSCCsCycleTests : TestM Unit := testFunction "findSCCs cycle tests" do
+  -- Test 4: Simple 2-node cycle (A → B → A)
+  let resolver4 := Resolver.empty.addSchema schemaWithCycle (testURI "/cycle.json")
+  let nameMap4 := mkNameMap resolver4
+  let namedSchemas4 := #[
+    SchemaID.mk (testURI "/cycle.json") [],
+    SchemaID.mk (testURI "/cycle.json") ["definitions", "A"],
+    SchemaID.mk (testURI "/cycle.json") ["definitions", "B"]
+  ]
+
+  match buildRefGraph namedSchemas4 nameMap4 resolver4 with
+  | .ok graph =>
+      let sccs := findSCCs graph
+      testEq "Cycle graph has 2 SCCs"
+        sccs.size
+        2
+      -- One SCC should contain both A and B
+      let hasCycleOfTwo := sccs.any (fun scc => scc.size == 2)
+      testEq "One SCC contains the cycle (A, B)"
+        hasCycleOfTwo
+        true
+      -- Find the SCC containing the cycle
+      let cycleSCC := sccs.find? (fun scc => scc.size == 2)
+      match cycleSCC with
+      | some scc =>
+          testEq "Cycle SCC contains A (index 1)"
+            (scc.contains 1)
+            true
+          testEq "Cycle SCC contains B (index 2)"
+            (scc.contains 2)
+            true
+      | none => test "Failed to find cycle SCC" false
+  | .error e => test s!"Test failed: {e}" false; return
+
+  -- Test 5: Complex 3-node cycle (A → B → C → A)
+  let resolver5 := Resolver.empty.addSchema schemaWithComplexCycle (testURI "/complex.json")
+  let nameMap5 := mkNameMap resolver5
+  let namedSchemas5 := #[
+    SchemaID.mk (testURI "/complex.json") [],
+    SchemaID.mk (testURI "/complex.json") ["definitions", "A"],
+    SchemaID.mk (testURI "/complex.json") ["definitions", "B"],
+    SchemaID.mk (testURI "/complex.json") ["definitions", "C"]
+  ]
+
+  match buildRefGraph namedSchemas5 nameMap5 resolver5 with
+  | .ok graph =>
+      let sccs := findSCCs graph
+      testEq "Complex cycle graph has 2 SCCs"
+        sccs.size
+        2
+      -- One SCC should contain A, B, and C
+      let hasCycleOfThree := sccs.any (fun scc => scc.size == 3)
+      testEq "One SCC contains the cycle (A, B, C)"
+        hasCycleOfThree
+        true
+      -- Find the SCC containing the cycle
+      let cycleSCC := sccs.find? (fun scc => scc.size == 3)
+      match cycleSCC with
+      | some scc =>
+          testEq "Cycle SCC contains A (index 1)"
+            (scc.contains 1)
+            true
+          testEq "Cycle SCC contains B (index 2)"
+            (scc.contains 2)
+            true
+          testEq "Cycle SCC contains C (index 3)"
+            (scc.contains 3)
+            true
+      | none => test "Failed to find cycle SCC" false
+  | .error e => test s!"Test failed: {e}" false; return
+
+  -- Test 6: Multiple independent cycles
+  let resolver6 := Resolver.empty.addSchema schemaWithMultipleCycles (testURI "/multi-cycle.json")
+  let nameMap6 := mkNameMap resolver6
+  let namedSchemas6 := #[
+    SchemaID.mk (testURI "/multi-cycle.json") [],
+    SchemaID.mk (testURI "/multi-cycle.json") ["definitions", "A"],
+    SchemaID.mk (testURI "/multi-cycle.json") ["definitions", "B"],
+    SchemaID.mk (testURI "/multi-cycle.json") ["definitions", "C"],
+    SchemaID.mk (testURI "/multi-cycle.json") ["definitions", "D"]
+  ]
+
+  match buildRefGraph namedSchemas6 nameMap6 resolver6 with
+  | .ok graph =>
+      let sccs := findSCCs graph
+      testEq "Multiple cycles graph has 3 SCCs"
+        sccs.size
+        3
+      -- Two SCCs should have size 2 (A-B cycle and C-D cycle)
+      let twoNodeCycles := sccs.filter (·.size == 2)
+      testEq "Two SCCs of size 2"
+        twoNodeCycles.size
+        2
+      -- Check that A and B are in the same SCC
+      let abSCC := sccs.find? (fun scc => scc.contains 1 && scc.contains 2)
+      testEq "A and B are in same SCC"
+        abSCC.isSome
+        true
+      -- Check that C and D are in the same SCC
+      let cdSCC := sccs.find? (fun scc => scc.contains 3 && scc.contains 4)
+      testEq "C and D are in same SCC"
+        cdSCC.isSome
+        true
+  | .error e => test s!"Test failed: {e}" false; return
+
 #eval TestM.run do
   extractBaseFromURITests
   extractSmartNameTests
@@ -370,6 +620,8 @@ def buildRefGraphTests : TestM Unit := testFunction "buildRefGraph tests" do
   mkNameMapTests
   extractSchemaRefsTests
   buildRefGraphTests
+  findSCCsTests
+  findSCCsCycleTests
   printSummary
 
 end Test
