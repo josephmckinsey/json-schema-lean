@@ -76,88 +76,31 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen 
    )
    | _ => .error "Cannot convert boolean schema to structure")
 
-/-- Main schema to TypeDefinition conversion -/
-def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
-    (config : Config := {}) : Except String Format := do
-  let name := config.sanitizeName typeName
-  let ctx : CodeGenContext := {
-    resolver := Resolver.empty.addSchema s,
-    nameMap := .ofList [(⟨default, []⟩, name)]
-    config := config
-    baseURI := default
-  }
-  let typeDef ← (schemaToTypeDef s name).run ctx
+/-- Format a single TypeDefinition with optional instances based on config -/
+def formatTypeDefWithInstances (td : TypeDefinition) (config : Config) : Format :=
+  if !config.generateInstances then
+    -- Without instances, just return the type declaration
+    td.typeDecl
+  else Id.run do
+    -- With instances enabled, add custom instances or deriving clauses
+    let mut deriveInfo : Array Format := #[]
+    let mut instances : Array Format := #[]
+    if let some fromImpl := td.fromJsonImpl then
+      instances := instances.push fromImpl
+    else
+      deriveInfo := deriveInfo.push "FromJson"
+    if let some toImpl := td.toJsonImpl then
+      instances := instances.push toImpl
+    else
+      deriveInfo := deriveInfo.push "ToJson"
 
-  -- Flatten all nested dependencies
-  let allDeps := flattenDependencies typeDef
-
-  if config.generateInstances then
-    -- Helper function to format a TypeDefinition with its instances
-    let formatWithInstances (td : TypeDefinition) : Format := Id.run do
-      let mut deriveInfo : Array Format := #[]
-      let mut instances : Array Format := #[]
-      if let some fromImpl := td.fromJsonImpl then
-        instances := instances.push fromImpl
-      else
-        deriveInfo := deriveInfo.push "FromJson"
-      if let some toImpl := td.toJsonImpl then
-        instances := instances.push toImpl
-      else
-        deriveInfo := deriveInfo.push "ToJson"
-      let deriveStr : Format := if deriveInfo.isEmpty then
-        .nil
-      else "\n" ++ .group (.nestD (
-          "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
-        ))
-      let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
-      return td.typeDecl ++ deriveStr ++ instanceStr
-
-    -- Format all dependencies with their instances
-    let depFormats := allDeps.map formatWithInstances
-    let mainFormat := formatWithInstances typeDef
-
-    -- Prepend dependencies before main definition
-    return Std.Format.joinSep (depFormats ++ [mainFormat]) "\n\n"
-
-  -- Prepend dependencies before main definition (without instances)
-  let depFormats := allDeps.map (·.typeDecl)
-  return Std.Format.joinSep (depFormats ++ [typeDef.typeDecl]) "\n\n"
-
-
-/-- Main function to convert a Schema to String (not Format, to simplify) -/
-def schemaToString (s : JsonSchema.Schema) (typeName : String)
-    (config : Config := {}) : String :=
-  match (schemaToFormat s typeName config) with
-  | .ok f => f.pretty
-  | .error e => s!"ERROR: {e}"
-
-/-!
-## Multi-Schema Code Generation with References
-
-Generate code for multiple schemas with $ref support, handling circular dependencies
-via mutual blocks.
--/
-
-/-- Format a single TypeDefinition with its instances -/
-def formatTypeDefWithInstances (td : TypeDefinition) (config : Config) : Format := Id.run do
-  let mut deriveInfo : Array Format := #[]
-  let mut instances : Array Format := #[]
-  if let some fromImpl := td.fromJsonImpl then
-    instances := instances.push fromImpl
-  else if config.generateInstances then
-    deriveInfo := deriveInfo.push "FromJson"
-  if let some toImpl := td.toJsonImpl then
-    instances := instances.push toImpl
-  else if config.generateInstances then
-    deriveInfo := deriveInfo.push "ToJson"
-
-  let deriveStr : Format := if deriveInfo.isEmpty then
-    .nil
-  else "\n" ++ .group (.nestD (
-      "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
-    ))
-  let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
-  return td.typeDecl ++ deriveStr ++ instanceStr
+    let deriveStr : Format := if deriveInfo.isEmpty then
+      .nil
+    else "\n" ++ .group (.nestD (
+        "deriving " ++ Std.Format.joinSep deriveInfo.toList ("," ++ .line)
+      ))
+    let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
+    return td.typeDecl ++ deriveStr ++ instanceStr
 
 /-- Generate a mutual block for an SCC with multiple schemas -/
 def generateMutualBlock (scc : Array Nat) (namedSchemas : Array SchemaID)
@@ -216,8 +159,8 @@ def generateAllSchemas (resolver : Resolver) (config : Config := {}) : Except St
     let output ← if scc.size == 1 then
       -- Single schema: standalone definition
       let schemaID := namedSchemas[scc[0]!]!
-      let schema? := resolver.getSchemaFromRoot? schemaID.baseURI schemaID.path
-      let schema ← match schema? with
+      let schemaAndURI? := resolver.getSchemaAndURI? schemaID.baseURI schemaID.path
+      let (schema, baseURI) ← match schemaAndURI? with
         | some s => .ok s
         | none => .error s!"Schema not found at {schemaID.baseURI} {schemaID.path}"
 
@@ -226,7 +169,7 @@ def generateAllSchemas (resolver : Resolver) (config : Config := {}) : Except St
         | some n => .ok n
         | none => .error s!"No name found for schema {schemaID.baseURI} {schemaID.path}"
 
-      let typeDef ← (schemaToTypeDef schema name).run ctx
+      let typeDef ← (schemaToTypeDef schema name).run { ctx with baseURI := baseURI }
 
       -- Include dependencies
       let allDeps := flattenDependencies typeDef
@@ -240,5 +183,36 @@ def generateAllSchemas (resolver : Resolver) (config : Config := {}) : Except St
     outputs := outputs.push output
 
   .ok (Std.Format.joinSep outputs.toList "\n\n" |>.pretty)
+
+/-- Convert schema to TypeDefinition conversion (no definitions) -/
+def schemaToFormat (s : JsonSchema.Schema) (typeName : String)
+    (config : Config := {}) : Except String Format := do
+  let name := config.sanitizeName typeName
+  let ctx : CodeGenContext := {
+    resolver := Resolver.empty.addSchema s,
+    nameMap := .ofList [(⟨default, []⟩, name)]
+    config := config
+    baseURI := default
+  }
+  let typeDef ← (schemaToTypeDef s name).run ctx
+
+  -- Flatten all nested dependencies
+  let allDeps := flattenDependencies typeDef
+
+  -- Format all dependencies with their instances
+  let depFormats := allDeps.map (formatTypeDefWithInstances · config)
+  let mainFormat := formatTypeDefWithInstances typeDef config
+
+  -- Prepend dependencies before main definition
+  return Std.Format.joinSep (depFormats ++ [mainFormat]) "\n\n"
+
+
+/-- Convert a single Schema to String (not Format, to simplify) -/
+def schemaToString (s : JsonSchema.Schema) (typeName : String)
+    (config : Config := {}) : String :=
+  match (schemaToFormat s typeName config) with
+  | .ok f => f.pretty
+  | .error e => s!"ERROR: {e}"
+
 
 end JsonSchema.CodeGen
