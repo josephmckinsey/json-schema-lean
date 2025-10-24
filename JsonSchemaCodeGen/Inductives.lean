@@ -1,6 +1,6 @@
 import JsonSchema.Schema
 import JsonSchemaCodeGen.Config
-import JsonSchemaCodeGen.Types
+import JsonSchemaCodeGen.InlineTypes
 import JsonSchemaCodeGen.Structures
 import Lean
 

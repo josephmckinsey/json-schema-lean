@@ -49,6 +49,7 @@ def isSimple (o : JsonSchema.SchemaObject) : Except String Unit := do
   if o.allOf.isSome then .error "allOf is not simple"
   if o.anyOf.isSome then .error "anyOf is not simple"
   if o.oneOf.isSome then .error "oneOf is not simple"
+  if o.items.isSome then .error "items array is not simple"
   if o.type.contains .ObjectType then .error "object type possible"
   -- These don't necessary make a type complex, but it
   -- probably should be a struct or inductive if these exist.
@@ -218,6 +219,42 @@ def parseInlineableOneOf (variants : Array JsonSchema.Schema)
     (prec : Nat := 0) : SchemaGen TypeDefinition :=
   parseInlineableAnyOf variants recurse prec
 
+/-- Try to parse a homogeneous array where the item type is inlineable.
+
+    This handles: {"type": "array", "items": simpleSchema} → Array Type
+    Only succeeds if the item schema can be parsed inline.
+-/
+def parseInlineableArray (itemSchema : JsonSchema.Schema)
+    (recurse : JsonSchema.Schema → Nat → SchemaGen TypeDefinition)
+    (prec : Nat := 0) : SchemaGen TypeDefinition := do
+  -- Try to parse the item type inline
+  let itemTypeDef ← recurse itemSchema max_prec
+
+  -- Build the array type
+  let typeDecl := if prec >= max_prec then
+    "(Array " ++ itemTypeDef.typeDecl ++ ")"
+  else
+    "Array " ++ itemTypeDef.typeDecl
+
+  -- Build FromJson instance if item has custom parser
+  let fromJsonImpl := itemTypeDef.fromJsonImpl.map fun itemFromJson =>
+    Std.Format.text "Array.fromJson?" ++ .line ++
+      Std.Format.paren itemFromJson
+
+  -- Build ToJson instance if item has custom serializer
+  let toJsonImpl := itemTypeDef.toJsonImpl.map fun itemToJson =>
+    Std.Format.text "@Array.toJson" ++ .line ++ "_" ++
+      .line ++ "⟨fun x => " ++ itemToJson ++ "⟩" ++
+      .line ++ Std.Format.text "x"
+
+  pure {
+    typeDecl := typeDecl
+    fromJsonImpl := fromJsonImpl
+    toJsonImpl := toJsonImpl
+    dependencies := itemTypeDef.dependencies
+    extraDocComment := itemTypeDef.extraDocComment
+  }
+
 /-- Inline types such as String ⊕ Int do not need complicated definitions.
     The prec parameter determines whether to add parentheses for function application.
 
@@ -236,7 +273,10 @@ partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0)
   else .error "no anyOf") <|>
   (if let some oneOf := o.oneOf then
     parseInlineableOneOf oneOf (fun s p => parseInline s p) prec
-  else .error "no oneOf")
+  else .error "no oneOf") <|>
+  (if let some (.Single itemSchema) := o.items then
+    parseInlineableArray itemSchema (fun s p => parseInline s p) prec
+  else .error "no inlineable array")
 
 def mkDocComment (s : Std.Format) : Format :=
   .nestD ("/-- " ++ s ++ " -/")
@@ -247,27 +287,5 @@ def combineDocStrings (topDoc : Std.Format) (extraComment : Option Std.Format) :
   | .nil, some extra => extra
   | doc, none => doc
   | doc, some extra => if extra.isEmpty then doc else doc ++ "\n\n" ++ extra
-
-
-def parseInlineAbbrev (s : JsonSchema.Schema) (name : String)
-    : SchemaGen TypeDefinition :=
-  parseInline s <&> fun form =>
-    let combined := combineDocStrings s.getDocString form.extraDocComment
-    let docComment := if combined.isEmpty then .nil else mkDocComment combined ++ .line
-    {
-      typeDecl := docComment ++ (
-        Std.Format.group <|
-          .nest 2 (
-            f!"abbrev {name} :=" ++ .line ++ form.typeDecl
-            ))
-      fromJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
-        .nestD ("instance : FromJson {name} where\n" ++
-          .group (.nestD "fromJson? j :=" ++ .line ++ fromJsonImpl)
-        )
-      toJsonImpl := form.fromJsonImpl <&> fun fromJsonImpl =>
-        .nestD ("instance : ToJson {name} where\n" ++
-          .group (.nestD "toJson x :=" ++ .line ++ fromJsonImpl)
-        )
-    }
 
 end JsonSchemaCodeGen

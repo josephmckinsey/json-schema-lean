@@ -336,7 +336,7 @@ def oneOfVariantTests : TestM Unit := testFunction "oneOf variant doc comments a
   -- Check that FromJson uses custom parsers for sum type fields
   let fromJsonStr := result2.fromJsonImpl.get!.pretty
   testEq "oneOf object with sum field uses custom FromJson"
-    (fromJsonStr.containsSubstr "let j := j.getD \"age\" .null; (fun x => .inl x) <$>")
+    (fromJsonStr.containsSubstr "let j := j.getObjValD \"age\"; (fun x => .inl x) <$>")
     true
   testEq "oneOf object with sum field uses custom FromJson 2"
     (fromJsonStr.containsSubstr "(inferInstance : FromJson String).fromJson? j")
@@ -393,9 +393,9 @@ def structInstanceTests : TestM Unit := testFunction "structure FromJson/ToJson 
 
 instance : FromJson Person where
   fromJson? j := do
-    name ← fromJson? (j.getD "name" .null)
-    age ← fromJson? (j.getD "age" .null)
-    email ← fromJson? (j.getD "email" .null)
+    let name ← fromJson? (j.getObjValD "name")
+    let age ← fromJson? (j.getObjValD "age")
+    let email ← fromJson? (j.getObjValD "email")
     .ok { name, age, email }
 
 instance : ToJson Person where
@@ -410,8 +410,8 @@ instance : ToJson Person where
 
 instance : FromJson Record where
   fromJson? j := do
-    id ← fromJson? (j.getD "id" .null)
-    value ← let j := j.getD "value" .null; Option.fromJson?
+    let id ← fromJson? (j.getObjValD "id")
+    let value ← let j := j.getObjValD "value"; Option.fromJson?
     ((fun x => .inl x) <$> ((inferInstance : FromJson String).fromJson? j) <|>
      (fun x => .inr (x)) <$> ((inferInstance : FromJson Float).fromJson? j))
     .ok { id, value }
@@ -490,6 +490,29 @@ instance : ToJson TestStringOrInt where
   toJson x := match x with
     | .case0 val => toJson val
     | .case1 val => toJson val
+
+def stringListSchemaJson : Json :=
+  .mkObj [
+    ("$schema", "http://json-schema.org/draft-07/schema#"),
+    ("title", "StringList"),
+    ("description", "A list of strings"),
+    ("type", "array"),
+    ("items", .mkObj [
+      ("type", .arr #["string", "integer"])
+    ])
+  ]
+
+def stringListSchema : JsonSchema.Schema :=
+  (fromJson? stringListSchemaJson).toOption.get!
+
+def arrayTests : TestM Unit := testFunction "Array Tests" do
+  testEq "inlinable string array" (schemaToString stringListSchema "StringList")
+    r#"/-- A list of strings -/
+abbrev StringList := Array (String ⊕ Int)"#
+
+#eval TestM.run do
+  arrayTests
+  printSummary
 
 def generatedCodeTests : TestM Unit := testFunction "generated code compilation tests" do
   -- Test that parsing works correctly

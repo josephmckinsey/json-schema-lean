@@ -1,7 +1,7 @@
 import JsonSchema.Schema
 import JsonSchema.Validation
 import JsonSchemaCodeGen.Config
-import JsonSchemaCodeGen.Types
+import JsonSchemaCodeGen.Abbreviations
 import JsonSchemaCodeGen.Structures
 import JsonSchemaCodeGen.Inductives
 import JsonSchemaCodeGen.References
