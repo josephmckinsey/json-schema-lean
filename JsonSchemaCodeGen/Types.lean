@@ -1,11 +1,11 @@
 import JsonSchema.Schema
-import JsonSchema.CodeGen.Config
-import JsonSchema.CodeGen.References
+import JsonSchemaCodeGen.Config
+import JsonSchemaCodeGen.References
 import Lean
 
-namespace JsonSchema.CodeGen
+namespace JsonSchemaCodeGen
 
-open Lean
+open Lean JsonSchema
 
 /-- Get the Lean type name for a single JsonType -/
 def jsonTypeToLean : JsonSchema.JsonType → String
@@ -270,4 +270,4 @@ def parseInlineAbbrev (s : JsonSchema.Schema) (name : String)
         )
     }
 
-end JsonSchema.CodeGen
+end JsonSchemaCodeGen

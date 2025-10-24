@@ -1,17 +1,15 @@
-import JsonSchema.CodeGen.References
+import JsonSchemaCodeGen.References
 import JsonSchema.Resolving
+import JsonSchemaCodeGenTesting.TestUtils
 import UriTesting.Helpers
 
 -- Test reference resolution and name generation
 section ReferencesTests
 
-open JsonSchema.CodeGen
+open JsonSchemaCodeGen
+open JsonSchemaCodeGenTesting
 open JsonSchema
 open Lean
-
--- Helper to create a simple URI for testing
-def testURI (path : String) : LeanUri.URI :=
-  LeanUri.URI.mk "http" (some "example.com") path none none
 
 -- Test schemas
 def simpleSchema : Schema := .Object {
@@ -139,14 +137,6 @@ def mkNameMapTests : TestM Unit := testFunction "mkNameMap tests" do
   testEq "Second user gets suffix"
     (nameMap3.get? ⟨testURI "/collision.json", ["definitions", "user"]⟩)
     (some "CollisionUser2")
-
--- Helper to create a relative ref (for testing)
-def mkRef (refStr : String) : LeanUri.URI ⊕ LeanUri.RelativeRef :=
-  match LeanUri.RelativeRef.parse refStr with
-  | .ok ref => .inr ref
-  | .error _ =>
-  let _ : Inhabited (LeanUri.URI ⊕ LeanUri.RelativeRef) := ⟨.inl (default)⟩
-  panic! s!"Invalid ref: {refStr}"
 
 -- Test schemas with references
 def schemaWithSimpleRef : Schema := .Object {
@@ -613,7 +603,7 @@ def findSCCsCycleTests : TestM Unit := testFunction "findSCCs cycle tests" do
         true
   | .error e => test s!"Test failed: {e}" false; return
 
-#eval TestM.run do
+def allReferencesTests : TestM Unit := group "Reference Tests" do
   extractBaseFromURITests
   extractSmartNameTests
   foldDefinitionsRecTests
@@ -622,7 +612,6 @@ def findSCCsCycleTests : TestM Unit := testFunction "findSCCs cycle tests" do
   buildRefGraphTests
   findSCCsTests
   findSCCsCycleTests
-  printSummary
 
 end Test
 end ReferencesTests

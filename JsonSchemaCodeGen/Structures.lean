@@ -1,11 +1,11 @@
 import JsonSchema.Schema
-import JsonSchema.CodeGen.Config
-import JsonSchema.CodeGen.Types
+import JsonSchemaCodeGen.Config
+import JsonSchemaCodeGen.Types
 import Lean
 
-namespace JsonSchema.CodeGen
+namespace JsonSchemaCodeGen
 
-open Lean
+open Lean JsonSchema
 
 /-- Check if a field name is in the required array -/
 def isFieldRequired (fieldName : String) (required : Option (Array String)) : Bool :=
@@ -189,4 +189,4 @@ partial def objectToStructure (obj : JsonSchema.SchemaObject) (typeName : String
     dependencies := allDependencies
   }
 
-end JsonSchema.CodeGen
+end JsonSchemaCodeGen

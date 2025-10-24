@@ -1,9 +1,9 @@
 import Lean
 import LeanUri
 import JsonSchema.Resolving
-namespace JsonSchema.CodeGen
+namespace JsonSchemaCodeGen
 
-open Lean
+open Lean JsonSchema
 
 /-- A complete type definition including the type declaration and optional JSON instances -/
 structure TypeDefinition where
@@ -90,4 +90,4 @@ def getURI : SchemaGen LeanUri.URI := read <&> CodeGenContext.baseURI
 def getRefNameFromID (id : SchemaID) : SchemaGen (Option String) := read <&> fun ctx =>
   ctx.nameMap.get? id
 
-end JsonSchema.CodeGen
+end JsonSchemaCodeGen

@@ -1,12 +1,12 @@
 import JsonSchema.Schema
 import JsonSchema.Resolving
-import JsonSchema.CodeGen.Config
+import JsonSchemaCodeGen.Config
 import JsonSchema.PointerFragment
 import Lean
 
-namespace JsonSchema.CodeGen
+namespace JsonSchemaCodeGen
 
-open Lean
+open Lean JsonSchema
 
 /-!
 # Reference Resolution and Name Mapping
@@ -307,4 +307,4 @@ def findSCCs (graph : RefGraph) : Array (Array Nat) :=
   -- SCCs are already in reverse topological order
   state.sccs
 
-end JsonSchema.CodeGen
+end JsonSchemaCodeGen

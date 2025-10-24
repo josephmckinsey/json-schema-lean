@@ -7,6 +7,12 @@ testDriver = "testJsonSchema"
 name = "JsonSchema"
 
 [[lean_lib]]
+name = "JsonSchemaCodeGen"
+
+[[lean_lib]]
+name = "JsonSchemaCodeGenTesting"
+
+[[lean_lib]]
 name = "Harness"
 
 [[lean_lib]]

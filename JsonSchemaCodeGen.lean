@@ -1,10 +1,10 @@
 import JsonSchema.Schema
 import JsonSchema.Validation
-import JsonSchema.CodeGen.Config
-import JsonSchema.CodeGen.Types
-import JsonSchema.CodeGen.Structures
-import JsonSchema.CodeGen.Inductives
-import JsonSchema.CodeGen.References
+import JsonSchemaCodeGen.Config
+import JsonSchemaCodeGen.Types
+import JsonSchemaCodeGen.Structures
+import JsonSchemaCodeGen.Inductives
+import JsonSchemaCodeGen.References
 
 import Lean
 
@@ -43,9 +43,9 @@ https://lean-lang.org/doc/reference/latest/Interacting-with-Lean/#Format
 This avoids hygiene issues and makes it easy to add comments/formatting.
 -/
 
-namespace JsonSchema.CodeGen
+namespace JsonSchemaCodeGen
 
-open Lean
+open Lean JsonSchema
 
 /-- Recursively flatten all dependencies from a TypeDefinition into a list -/
 partial def flattenDependencies (typeDef : TypeDefinition) : List TypeDefinition :=
@@ -215,4 +215,4 @@ def schemaToString (s : JsonSchema.Schema) (typeName : String)
   | .error e => s!"ERROR: {e}"
 
 
-end JsonSchema.CodeGen
+end JsonSchemaCodeGen

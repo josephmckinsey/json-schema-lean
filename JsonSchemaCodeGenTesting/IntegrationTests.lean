@@ -1,18 +1,16 @@
-import JsonSchema.CodeGen
+import JsonSchemaCodeGen
 import JsonSchema.Resolving
+import JsonSchemaCodeGenTesting.TestUtils
 import UriTesting.Helpers
 
 -- Test integrated code generation with references
 
 section IntegrationTests
 
-open JsonSchema.CodeGen
+open JsonSchemaCodeGen
+open JsonSchemaCodeGenTesting
 open JsonSchema
 open Lean
-
--- Helper to create a simple URI for testing
-def testURI (path : String) : LeanUri.URI :=
-  LeanUri.URI.mk "http" (some "example.com") path none none
 
 namespace Test
 
@@ -79,14 +77,6 @@ def definitionsIntegrationTest : TestM Unit := testFunction "Schema with definit
   | .error e =>
       test s!"Generation failed: {e}" false
 
--- Helper to create a relative ref
-def mkRef (refStr : String) : LeanUri.URI ⊕ LeanUri.RelativeRef :=
-  match LeanUri.RelativeRef.parse refStr with
-  | .ok ref => .inr ref
-  | .error _ =>
-  let _ : Inhabited (LeanUri.URI ⊕ LeanUri.RelativeRef) := ⟨.inl (default)⟩
-  panic! s!"Invalid ref: {refStr}"
-
 -- Test 3: Circular reference (mutual block)
 def circularRefTest : TestM Unit := testFunction "Circular references" do
   let schema : Schema := .Object {
@@ -149,12 +139,11 @@ def mutualRecursionTest : TestM Unit := testFunction "Mutual recursion" do
   | .error e =>
       test s!"Generation failed: {e}" false
 
-#eval TestM.run do
+def allIntegrationTests : TestM Unit := group "Integration Tests" do
   simpleIntegrationTest
   definitionsIntegrationTest
   circularRefTest
   mutualRecursionTest
-  printSummary
 
 end Test
 end IntegrationTests

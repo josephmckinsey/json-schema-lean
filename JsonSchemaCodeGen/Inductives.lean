@@ -1,12 +1,12 @@
 import JsonSchema.Schema
-import JsonSchema.CodeGen.Config
-import JsonSchema.CodeGen.Types
-import JsonSchema.CodeGen.Structures
+import JsonSchemaCodeGen.Config
+import JsonSchemaCodeGen.Types
+import JsonSchemaCodeGen.Structures
 import Lean
 
-namespace JsonSchema.CodeGen
+namespace JsonSchemaCodeGen
 
-open Lean
+open Lean JsonSchema
 
 /-- Generate a constructor name from a JSON value for an enum.
 
@@ -298,4 +298,4 @@ def anyOfToInductive (variants : Array JsonSchema.Schema) (typeName : String)
     : SchemaGen TypeDefinition :=
   oneOfToInductive variants typeName schemaToTypeDef
 
-end JsonSchema.CodeGen
+end JsonSchemaCodeGen

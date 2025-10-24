@@ -1,11 +1,11 @@
-import JsonSchema.CodeGen
-import JsonSchema.CodeGenTesting.ReferencesTests
+import JsonSchemaCodeGen
+import JsonSchemaCodeGenTesting.ReferencesTests
 import UriTesting.Helpers
 
 -- Test the new Format-based code generation
 section FormatTests
 
-open JsonSchema.CodeGen
+open JsonSchemaCodeGen
 open Lean
 
 def testPersonSchema : JsonSchema.Schema := .Object {
@@ -513,7 +513,7 @@ def generatedCodeTests : TestM Unit := testFunction "generated code compilation 
     (toJson (TestStringOrInt.case1 123))
     (Json.num 123)
 
-#eval TestM.run do
+def allCodeGenTests : TestM Unit := group "CodeGen Tests" do
   simpleTest
   structureTests
   structInstanceTests
@@ -526,7 +526,6 @@ def generatedCodeTests : TestM Unit := testFunction "generated code compilation 
   fromJsonListSumTests
   parseSimpleTypeTests
   descriptionTests
-  printSummary
 
 def hmm := Option (String ⊕ Int)
 
