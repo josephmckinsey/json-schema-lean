@@ -35,3 +35,7 @@ root = "Main"
 [[lean_exe]]
 name = "testJsonSchema"
 root = "TestRunner"
+
+[[lean_exe]]
+name = "schemaToJson"
+root = "CodeGenCLI"

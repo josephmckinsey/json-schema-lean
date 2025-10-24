@@ -188,7 +188,7 @@ def mkOneOfFromJson (variantInfos : Array VariantInfo) (typeName : String) : For
     | some fieldInfos =>
       -- Object type: parse each field with custom parsers if available
       let fieldBinds := fieldInfos.toList.zipIdx.map fun (fieldInfo, idx) =>
-        let getField := "j.getD \"" ++ fieldInfo.origName ++ "\" .null"
+        let getField := "j.getObjValD \"" ++ fieldInfo.origName ++ "\""
         let parseExpr := match fieldInfo.typeDef.fromJsonImpl with
           | some customParser =>
             -- Custom parser expects 'j' to be bound to the field value
@@ -196,7 +196,7 @@ def mkOneOfFromJson (variantInfos : Array VariantInfo) (typeName : String) : For
           | none =>
             -- Use standard fromJson?
             "fromJson? (" ++ getField ++ ")"
-        s!"f{idx} ← " ++ parseExpr
+        s!"let f{idx} ← " ++ parseExpr
       let ctorCall := "." ++ ctorName ++ " " ++ String.intercalate " " (List.range fieldInfos.size |>.map fun i => s!"f{i}")
       let parseCode : Format := Std.Format.joinSep fieldBinds.reverse "\n" ++ "\n.ok " ++ ctorCall
       fromJsonCases := fromJsonCases ++ ["(do\n" ++ Std.Format.nestD parseCode ++ ")"]

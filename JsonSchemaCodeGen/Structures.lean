@@ -78,7 +78,7 @@ def mkStructFromJson (typeName : String) (fieldInfos : List (String × String ×
   let mut fieldBindsList : List Format := []
   for (origName, sanitizedName, typeDef) in fieldInfos do
     -- Get the JSON value for this field
-    let getField := "j.getD \"" ++ origName ++ "\" .null"
+    let getField := "j.getObjValD \"" ++ origName ++ "\""
 
     -- Parse the field value
     -- If the field has a custom fromJson, we need to use it
@@ -90,7 +90,7 @@ def mkStructFromJson (typeName : String) (fieldInfos : List (String × String ×
         -- Use standard fromJson?
         "fromJson? (" ++ getField ++ ")"
 
-    fieldBindsList := (sanitizedName ++ " ← " ++ parseExpr) :: fieldBindsList
+    fieldBindsList := ("let " ++ sanitizedName ++ " ← " ++ parseExpr) :: fieldBindsList
 
   let fieldBinds := fieldBindsList.reverse
 

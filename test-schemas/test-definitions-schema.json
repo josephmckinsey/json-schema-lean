@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Company",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "employees": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Employee"
+      }
+    }
+  },
+  "definitions": {
+    "Employee": {
+      "type": "object",
+      "description": "An employee of the company",
+      "required": ["name", "role"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "salary": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

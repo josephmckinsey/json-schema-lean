@@ -22,9 +22,76 @@ docker build -f Dockerfile -t localhost/lean-jsonschema:latest .
 podman build -f Dockerfile -t localhost/lean-jsonschema:latest .
 ```
 
+## Code Generation
+
+Generate Lean type definitions from JSON Schema files:
+
+```bash
+# Generate to stdout
+lake exe schemaToJson schema.json
+
+# Generate to file
+lake exe schemaToJson schema.json output.lean
+```
+
+The code generator creates:
+- Type definitions (structures, inductives, or type abbreviations)
+- `FromJson` and `ToJson` instances
+- Doc comments from schema descriptions
+- Proper handling of references, definitions, and circular types
+
+**Example:**
+
+Input (`person.json`):
+```json
+{
+  "type": "object",
+  "title": "Person",
+  "description": "A person object",
+  "required": ["name", "age"],
+  "properties": {
+    "name": { "type": "string", "description": "The person's name" },
+    "age": { "type": "integer", "description": "The person's age" },
+    "email": { "type": "string" }
+  }
+}
+```
+
+Output:
+```lean
+import Lean.Data.Json
+
+open Lean
+
+/-- A person object -/
+structure Person where
+  /-- The person's name -/
+  name : String
+  /-- The person's age -/
+  age : Int
+  email : Option String
+
+instance : FromJson Person where
+  fromJson? j := do
+    let name ← fromJson? (j.getObjValD "name")
+    let age ← fromJson? (j.getObjValD "age")
+    let email ← fromJson? (j.getObjValD "email")
+    .ok { name, age, email }
+
+instance : ToJson Person where
+  toJson s := Json.mkObj [("name", toJson s.name), ("age", toJson s.age), ("email", toJson s.email)]
+```
+
+### Testing Code Generation
+
+```bash
+# Test all schemas in test-schemas/
+./testCodeGen.sh
+```
+
 ## Testing
 
-There are some tests in `lake test`, but most tests rely on `bowtie`:
+There are some tests in `lake test`, but most validation tests rely on `bowtie`:
 
 Install [bowtie](https://docs.bowtie.report/en/stable/).
 
@@ -59,11 +126,11 @@ Project Structure:
 
 ```
 ├── Dockerfile            # Dockerfile for Bowtie image
+├── CodeGenCLI.lean       # CLI for JSON Schema to Lean code generation
 ├── Harness/              # Bowtie interface
 │   ├── Command.lean
 │   └── Harness.lean
 ├── JsonSchema/
-│   ├── Compiler.lean     # JSON Schema to Type (TODO)
 │   ├── Error.lean        # Error types
 │   ├── Format.lean       # Format validators (not yet integrated)
 │   ├── Loader.lean       # Remote schema loading (TODO)
@@ -72,10 +139,24 @@ Project Structure:
 │   ├── Schema.lean       # Schema data structures
 │   ├── SchemaPointer.lean # Schema pointer utilities
 │   └── Validation.lean   # Core validation logic
-├── JsonSchemaTesting/    # Compile-time Testing
+├── JsonSchemaCodeGen/    # Code generation from schemas
+│   ├── CodeGen.lean      # Main entry point
+│   ├── Config.lean       # Configuration
+│   ├── Inductives.lean   # Enum/oneOf/anyOf generation
+│   ├── References.lean   # $ref resolution for codegen
+│   ├── Structures.lean   # Object/structure generation
+│   └── Types.lean        # Simple type handling
+├── JsonSchemaCodeGenTesting/  # Code generation tests
+│   ├── IntegrationTests.lean
+│   ├── ReferencesTests.lean
+│   ├── Tests.lean
+│   └── TestUtils.lean
+├── JsonSchemaTesting/    # Validation tests
 ├── Main.lean             # Entry point for bowtie
-├── TestRunner.lean       # Minimal lake test location
-├── test.sh               # Test runner script
+├── TestRunner.lean       # Test runner for all tests
+├── test.sh               # Validation test script (Bowtie)
+├── testCodeGen.sh        # Code generation test script
+├── test-schemas/         # Example JSON schemas for testing
 ├── lakefile.toml
 └── lean-toolchain
 ```
@@ -233,5 +314,12 @@ See [JsonSchemaTesting/Examples.lean](JsonSchemaTesting/Examples.lean) for more 
 ### Extra goodies
 
 - [ ] Proofs of termination/correctness
-- [ ] Compile JSON Schema to Lean types like datamodel-code-generator
+- [x] Compile JSON Schema to Lean types like datamodel-code-generator (see Code Generation section)
+  - [x] CLI tool (`schemaToJson`)
+  - [x] Structures, inductives, enums
+  - [x] FromJson/ToJson instances
+  - [x] Reference resolution and topological ordering
+  - [x] Circular/mutual type support
+  - [ ] Array item type handling
+  - [ ] Tuple type handling
 - [ ] Create JSON Schema from Lean types
