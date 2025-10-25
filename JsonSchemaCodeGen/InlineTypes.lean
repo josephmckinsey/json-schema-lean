@@ -3,6 +3,17 @@ import JsonSchemaCodeGen.Config
 import JsonSchemaCodeGen.References
 import Lean
 
+def Std.Format.replace (s : Format) (pattern : String) (replacement : String) : Format :=
+  match s with
+  | .nil => .nil
+  | .line => .line
+  | .align (force : Bool) => .align force
+  | .text t => .text (t.replace pattern replacement)
+  | .nest (indent : Int) (f : Format) => .nest indent (f.replace pattern replacement)
+  | .append s t => .append (s.replace pattern replacement) (t.replace pattern replacement)
+  | .group f behavior => .group (f.replace pattern replacement) behavior
+  | .tag i f => .tag i (f.replace pattern replacement)
+
 namespace JsonSchemaCodeGen
 
 open Lean JsonSchema
@@ -482,8 +493,15 @@ partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0)
     parseInlineableArray itemSchema (fun s p => parseInline s p) prec
   else .error "no inlineable array")
 
+/-- Escape doc comment terminators in a string to prevent premature closing.
+    Replaces "- /"(no space) with "-\/" to avoid breaking doc comments. -/
+def escapeDocComment (s : Format) : Format :=
+  s.replace "-/" "- /"
+
+/-- Create a doc comment from a Format, escaping any "- /"(no space) sequences -/
 def mkDocComment (s : Std.Format) : Format :=
-  .nestD ("/-- " ++ s ++ " -/")
+  let escaped := escapeDocComment s
+  .nestD ("/-- " ++ escaped ++ " -/")
 
 def combineDocStrings (topDoc : Std.Format) (extraComment : Option Std.Format) : Format :=
   match topDoc, extraComment with

@@ -500,6 +500,30 @@ def descriptionTests : TestM Unit := testFunction "description tests" do
     (schemaToString simpleSchemaWithDesc "MyString")
     "/-- A simple string type -/\nabbrev MyString := String"
 
+  -- Test that "-/" in descriptions gets escaped to prevent breaking doc comments
+  let schemaWithSlash : JsonSchema.Schema := .Object {
+    type := #[.StringType]
+    description := some "Direction: up-/down-"
+  }
+  testEq "Description with -/ gets escaped"
+    (schemaToString schemaWithSlash "Direction")
+    "/-- Direction: up- /down- -/\nabbrev Direction := String"
+
+  -- Test structure field with "-/" in description
+  let structWithSlashDesc : JsonSchema.Schema := .Object {
+    type := #[.ObjectType]
+    required := some #["movement"]
+    properties := some #[
+      ("movement", .Object {
+        type := #[.StringType]
+        description := some "Can be up-/down- or left-/right-"
+      })
+    ]
+  }
+  testEq "Structure field with -/ in description"
+    (schemaToString structWithSlashDesc "Movement")
+    "structure Movement where\n  /-- Can be up- /down- or left- /right- -/\n  movement : String"
+
 -- Test that generated code actually compiles and works
 -- This inductive type was generated from oneOf schema
 inductive TestStringOrInt where
