@@ -59,7 +59,7 @@ def definitionsIntegrationTest : TestM Unit := testFunction "Schema with definit
     ])
   }
   let resolver := Resolver.empty.addSchema schema (testURI "/person.json")
-  let config : Config := { generateFromJson := true, generateToJson := true }
+  let config : Config := { generateFromJson := true, generateToJson := true, includeBaseNamePrefix := true }
 
   match generateAllSchemas resolver config with
   | .ok output =>
@@ -94,7 +94,7 @@ def circularRefTest : TestM Unit := testFunction "Circular references" do
     ])
   }
   let resolver := Resolver.empty.addSchema schema (testURI "/node.json")
-  let config : Config := { generateFromJson := true, generateToJson := true }
+  let config : Config := { generateFromJson := true, generateToJson := true, includeBaseNamePrefix := true }
 
   match generateAllSchemas resolver config with
   | .ok output =>
@@ -128,7 +128,7 @@ def mutualRecursionTest : TestM Unit := testFunction "Mutual recursion" do
     ])
   }
   let resolver := Resolver.empty.addSchema schema (testURI "/mutual.json")
-  let config : Config := { generateFromJson := true, generateToJson := true }
+  let config : Config := { generateFromJson := true, generateToJson := true, includeBaseNamePrefix := true }
 
   match generateAllSchemas resolver config with
   | .ok output =>

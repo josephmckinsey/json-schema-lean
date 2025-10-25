@@ -64,7 +64,7 @@ def extractBaseFromURITests : TestM Unit := testFunction "extractBaseFromURI tes
     "Schema"
 
 def extractSmartNameTests : TestM Unit := testFunction "extractSmartName tests" do
-  let config : Config := {}
+  let config : Config := { includeBaseNamePrefix := true }
 
   testEq "Root schema (empty path)"
     (extractSmartName (testURI "/schemas/user.json") [] config)
@@ -102,7 +102,8 @@ def foldDefinitionsRecTests : TestM Unit := testFunction "foldDefinitionsRec tes
 def mkNameMapTests : TestM Unit := testFunction "mkNameMap tests" do
   let resolver := Resolver.empty
     |>.addSchema simpleSchema (testURI "/simple.json")
-  let nameMap := mkNameMap resolver
+  let config : Config := { includeBaseNamePrefix := true }
+  let nameMap := mkNameMap resolver config
 
   testEq "Simple schema gets capitalized name"
     (nameMap.get? ⟨testURI "/simple.json", []⟩)
@@ -111,7 +112,7 @@ def mkNameMapTests : TestM Unit := testFunction "mkNameMap tests" do
   -- Test with definitions
   let resolver2 := Resolver.empty
     |>.addSchema schemaWithDefinitions (testURI "/user.json")
-  let nameMap2 := mkNameMap resolver2
+  let nameMap2 := mkNameMap resolver2 config
 
   testEq "Root schema"
     (nameMap2.get? ⟨testURI "/user.json", []⟩)
@@ -128,7 +129,7 @@ def mkNameMapTests : TestM Unit := testFunction "mkNameMap tests" do
   -- Test collision handling
   let resolver3 := Resolver.empty
     |>.addSchema schemaWithCollision (testURI "/collision.json")
-  let nameMap3 := mkNameMap resolver3
+  let nameMap3 := mkNameMap resolver3 config
 
   testEq "First User keeps name"
     (nameMap3.get? ⟨testURI "/collision.json", ["definitions", "User"]⟩)

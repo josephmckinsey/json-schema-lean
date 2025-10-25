@@ -71,11 +71,15 @@ def extractSmartName (uri : LeanUri.URI) (path : List String) (config : Config) 
                           "patternProperties", "oneOf", "anyOf", "allOf"]
   let relevantPath := path.filter (fun s => !genericSegments.contains s)
 
-  -- Combine base name with relevant path components
+  -- Combine base name with relevant path components (optionally skip base name)
   let combined := if relevantPath.isEmpty then
     baseName
   else
-    baseName ++ (relevantPath.map capitalize |>.foldl (· ++ ·) "")
+    let pathString := relevantPath.map capitalize |>.foldl (· ++ ·) ""
+    if config.includeBaseNamePrefix then
+      baseName ++ pathString
+    else
+      pathString
 
   config.sanitizeName combined
 

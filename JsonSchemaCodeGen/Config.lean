@@ -65,6 +65,10 @@ structure Config where
   generateFromJson : Bool := false
   /-- Whether to generate ToJson instances -/
   generateToJson : Bool := false
+  /-- Whether to include the base URI filename in generated type names.
+      When true: user.json with definition "Address" → "UserAddress"
+      When false: user.json with definition "Address" → "Address" -/
+  includeBaseNamePrefix : Bool := false
 
 /-- Capitalize first letter -/
 def capitalize (s : String) : String :=
