@@ -58,8 +58,8 @@ def main (args : List String) : IO UInt32 := do
       let baseURI : LeanUri.URI := ⟨"file", none, inputPath, none, none⟩
       let resolver := Resolver.empty.addSchema schema baseURI
 
-      -- Generate code with instances enabled
-      let config : Config := { generateInstances := false }
+      -- Generate code without instances by default
+      let config : Config := { generateFromJson := false, generateToJson := false }
       match generateAllSchemas resolver config with
       | .error e => do
         IO.eprintln s!"Code generation error: {e}"
@@ -79,8 +79,8 @@ def main (args : List String) : IO UInt32 := do
       let baseURI : LeanUri.URI := ⟨"file", none, inputPath, none, none⟩
       let resolver := Resolver.empty.addSchema schema baseURI
 
-      -- Generate code with instances enabled
-      let config : Config := { generateInstances := false }
+      -- Generate code without instances by default
+      let config : Config := { generateFromJson := false, generateToJson := false }
       match generateAllSchemas resolver config with
       | .error e => do
         IO.eprintln s!"Code generation error: {e}"

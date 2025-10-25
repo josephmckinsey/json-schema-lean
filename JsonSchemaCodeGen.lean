@@ -80,19 +80,25 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen 
 
 /-- Format a single TypeDefinition with optional instances based on config -/
 def formatTypeDefWithInstances (td : TypeDefinition) (config : Config) : Format :=
-  if !config.generateInstances then
+  if !config.generateFromJson && !config.generateToJson then
     -- Without instances, just return the type declaration
     td.typeDecl
   else Id.run do
-    -- With instances enabled, add custom instances
+    -- With instances enabled, add custom instances based on config
     let mut instances : Array Format := #[]
-    if let some fromImpl := td.fromJsonImpl then
-      instances := instances.push fromImpl
-    if let some toImpl := td.toJsonImpl then
-      instances := instances.push toImpl
+    if config.generateFromJson then
+      if let some fromImpl := td.fromJsonImpl then
+        instances := instances.push fromImpl
+    if config.generateToJson then
+      if let some toImpl := td.toJsonImpl then
+        instances := instances.push toImpl
 
-    let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
-    return td.typeDecl ++ instanceStr
+    -- Only add spacing if we have instances
+    if instances.isEmpty then
+      return td.typeDecl
+    else
+      let instanceStr : Format := Std.Format.prefixJoin "\n\n" instances.toList
+      return td.typeDecl ++ instanceStr
 
 /-- Generate a mutual block for an SCC with multiple schemas -/
 def generateMutualBlock (scc : Array Nat) (namedSchemas : Array SchemaID)

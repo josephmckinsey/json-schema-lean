@@ -61,8 +61,10 @@ structure Config where
   sanitizeName : String → String := defaultSanitizeName
   /-- Indentation string -/
   indent : String := "  "
-  /-- Whether to generate FromJson/ToJson instances -/
-  generateInstances : Bool := false
+  /-- Whether to generate FromJson instances -/
+  generateFromJson : Bool := false
+  /-- Whether to generate ToJson instances -/
+  generateToJson : Bool := false
 
 /-- Capitalize first letter -/
 def capitalize (s : String) : String :=

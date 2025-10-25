@@ -99,7 +99,7 @@ def simpleTest : TestM Unit := testFunction "abbreviation tests" do
 
   -- Test null type with instances
   let testNullSchema : JsonSchema.Schema := .Object { type := #[.NullType] }
-  testEq "Null type with instances" (schemaToString testNullSchema "NullType" { generateInstances := true })
+  testEq "Null type with instances" (schemaToString testNullSchema "NullType" { generateFromJson := true, generateToJson := true })
     r#"abbrev NullType := Unit
 
 instance : FromJson NullType where
@@ -409,7 +409,7 @@ def oneOfVariantTests : TestM Unit := testFunction "oneOf variant doc comments a
 def structInstanceTests : TestM Unit := testFunction "structure FromJson/ToJson tests" do
   -- Test simple structure with generateInstances
   testEq "Simple struct with instances"
-    (schemaToString testPersonSchema "Person" { generateInstances := true })
+    (schemaToString testPersonSchema "Person" { generateFromJson := true, generateToJson := true })
     r#"structure Person where
   name : String
   age : Int
@@ -427,7 +427,7 @@ instance : ToJson Person where
 
   -- Test structure with optional sum type field
   testEq "Struct with optional sum type and instances"
-    (schemaToString testStructWithOptionalSum "Record" { generateInstances := true })
+    (schemaToString testStructWithOptionalSum "Record" { generateFromJson := true, generateToJson := true })
     r#"structure Record where
   id : Int
   value : Option (String ⊕ Float)
@@ -450,7 +450,7 @@ instance : ToJson Record where
     x)]"#
 
   -- Test that nested structures generate instances for both types
-  let nestedResult := schemaToString testNestedStructSchema "Person" { generateInstances := true }
+  let nestedResult := schemaToString testNestedStructSchema "Person" { generateFromJson := true, generateToJson := true }
   -- Should contain both PersonAddress and Person instances
   testEq "Nested struct has PersonAddress FromJson"
     (nestedResult.containsSubstr "instance : FromJson PersonAddress where")
@@ -649,7 +649,7 @@ def tupleAbbrevTests : TestM Unit := testFunction "Tuple Abbrev Tests" do
     true
 
   -- Test mixed tuple (inline simple types, named complex)
-  let mixedResult := schemaToString mixedTupleSchema "MixedTuple" {generateInstances := true}
+  let mixedResult := schemaToString mixedTupleSchema "MixedTuple" {generateFromJson := true, generateToJson := true}
   testEq "mixed tuple creates dependency"
     (mixedResult.containsSubstr "structure MixedTupleItem1")
     true
