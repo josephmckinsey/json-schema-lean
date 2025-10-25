@@ -139,11 +139,65 @@ def mutualRecursionTest : TestM Unit := testFunction "Mutual recursion" do
   | .error e =>
       test s!"Generation failed: {e}" false
 
+-- Test 5: Mutual recursion with anyOf (like PredicateComposition)
+def mutualAnyOfTest : TestM Unit := testFunction "Mutual anyOf recursion" do
+  let schema : Schema := .Object {
+    definitions := some (.ofList [
+      ("Node", Schema.Object {
+        anyOf := some #[
+          Schema.Object { ref := some (mkRef "#/definitions/Leaf") },
+          Schema.Object { ref := some (mkRef "#/definitions/Branch") }
+        ]
+      }),
+      ("Leaf", Schema.Object {
+        type := #[.ObjectType]
+        properties := some #[
+          ("value", Schema.Object { type := #[.IntegerType] })
+        ]
+        required := some #["value"]
+      }),
+      ("Branch", Schema.Object {
+        type := #[.ObjectType]
+        properties := some #[
+          ("left", Schema.Object { ref := some (mkRef "#/definitions/Node") }),
+          ("right", Schema.Object { ref := some (mkRef "#/definitions/Node") })
+        ]
+        required := some #["left", "right"]
+      })
+    ])
+  }
+  let resolver := Resolver.empty.addSchema schema (testURI "/tree.json")
+  let config : Config := { includeBaseNamePrefix := true }
+
+  let expected := r#"abbrev Tree := Json
+
+structure TreeLeaf where
+  value : Int
+
+mutual
+inductive TreeNode where | case0 (val : TreeLeaf) | case1 (val : TreeBranch)
+
+structure TreeBranch where
+  left : TreeNode
+  right : TreeNode
+end"#
+
+  match generateAllSchemas resolver config with
+  | .ok output =>
+      testEq "Generated output matches expected" output expected
+      test "Generated code contains mutual" (output.containsSubstr "mutual")
+      test "Generated code contains TreeNode" (output.containsSubstr "TreeNode")
+      test "Generated code contains TreeLeaf" (output.containsSubstr "TreeLeaf")
+      test "Generated code contains TreeBranch" (output.containsSubstr "TreeBranch")
+  | .error e =>
+      test s!"Generation failed: {e}" false
+
 def allIntegrationTests : TestM Unit := group "Integration Tests" do
   simpleIntegrationTest
   definitionsIntegrationTest
   circularRefTest
   mutualRecursionTest
+  mutualAnyOfTest
 
 end Test
 end IntegrationTests

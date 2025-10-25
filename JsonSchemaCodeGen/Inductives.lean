@@ -183,7 +183,7 @@ partial def variantToConstructor (variant : JsonSchema.Schema) (ctorName : Strin
         dependencies := [typeDef],
         docComment := if docComment.isEmpty then none else some docComment
       }
-  | _ => .error s!"Could not construct argument for variant {ctorName} {variant} of {typeName}
+  | _ => throwWithContext s!"Could not construct argument for variant {ctorName} {variant} of {typeName}
   This error should be unreachable"
 
 /-- Build FromJson instance for a oneOf inductive type -/

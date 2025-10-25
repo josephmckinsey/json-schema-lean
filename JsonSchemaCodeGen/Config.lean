@@ -47,7 +47,9 @@ def defaultSanitizeName (name : String) : String :=
     -- Other common keywords
     "macro", "syntax", "notation", "prefix", "infix", "postfix",
     "example", "opaque", "noncomputable", "unsafe", "extern",
-    "abbrev", "scoped", "local"
+    "abbrev", "scoped", "local",
+    -- Common types
+    "Stream"
   ]
   if keywords.contains result
   then result ++ "_"
@@ -94,6 +96,10 @@ structure CodeGenContext where
   config : Config
   /-- Base URI which gets updated as we traverse -/
   baseURI : LeanUri.URI
+  /-- Current type name being generated (for error reporting) -/
+  currentTypeName : Option String := none
+  /-- Current schema ID being processed (for error reporting) -/
+  currentSchemaID : Option SchemaID := none
 
 abbrev SchemaGen := ReaderT CodeGenContext (Except String ·)
 
@@ -101,7 +107,7 @@ def SchemaGen.run (gen : SchemaGen α) (ctx : CodeGenContext)
     : Except String α := ReaderT.run gen ctx
 
 def SchemaGen.noCtxRun? (gen : SchemaGen α) : Except String α :=
-  gen.run ⟨.empty, .emptyWithCapacity, {}, default⟩
+  gen.run { resolver := .empty, nameMap := .emptyWithCapacity, config := {}, baseURI := default }
 
 def withNewID (s : Schema)
     (g : SchemaGen α) : SchemaGen α :=
@@ -115,5 +121,23 @@ def getURI : SchemaGen LeanUri.URI := read <&> CodeGenContext.baseURI
 
 def getRefNameFromID (id : SchemaID) : SchemaGen (Option String) := read <&> fun ctx =>
   ctx.nameMap.get? id
+
+/-- Set the current type name in the context (for error reporting) -/
+def withTypeName (name : String) (g : SchemaGen α) : SchemaGen α :=
+  withReader (fun ctx => { ctx with currentTypeName := some name }) g
+
+/-- Set the current schema ID in the context (for error reporting) -/
+def withSchemaID (id : SchemaID) (g : SchemaGen α) : SchemaGen α :=
+  withReader (fun ctx => { ctx with currentSchemaID := some id }) g
+
+/-- Throw an error with context information (type name and schema ID) -/
+def throwWithContext (msg : String) : SchemaGen α := do
+  let ctx ← read
+  let contextInfo := match ctx.currentTypeName, ctx.currentSchemaID with
+    | some name, some id => s!" in type '{name}' ({toString id})"
+    | some name, none => s!" in type '{name}'"
+    | none, some id => s!" at {toString id}"
+    | none, none => ""
+  .error (msg ++ contextInfo)
 
 end JsonSchemaCodeGen

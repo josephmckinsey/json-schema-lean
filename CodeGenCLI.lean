@@ -28,7 +28,7 @@ def readSchemaFile (path : String) : IO (Except String Schema) := do
 
 /-- Add necessary imports to generated code -/
 def addImports (generatedCode : String) : String :=
-  "import Lean.Data.Json\n\nopen Lean\n\n" ++ generatedCode
+  "import Lean.Data.Json\n\nopen Lean (Json)\n\n" ++ generatedCode
 
 /-- Write generated code to file or stdout -/
 def writeOutput (content : String) (outputPath? : Option String) : IO Unit := do

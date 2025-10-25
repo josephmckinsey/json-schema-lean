@@ -41,7 +41,7 @@ def resolveRefToName (ref : LeanUri.URI ⊕ LeanUri.RelativeRef) : SchemaGen Str
   let name? ← read <&> fun ctx => ctx.nameMap.get? ⟨rootURI, path⟩
   match name? with
   | some name => pure name
-  | none => .error s!"Reference {←getURI} -> {rootURI} {path} could not be found."
+  | none => throwWithContext s!"Reference {←getURI} -> {rootURI} {path} could not be found."
 
 /-- Extract base name from URI path (e.g., "schemas/user.json" → "User")
     Similar to FilePath.fileStem but works on URI paths. -/

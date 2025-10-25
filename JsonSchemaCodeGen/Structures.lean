@@ -144,7 +144,7 @@ partial def objectToStructure (obj : JsonSchema.SchemaObject) (typeName : String
   -- Check that we have properties
   let properties := obj.properties.getD #[]
   if properties.isEmpty then
-    throw "Object has no properties, cannot generate structure"
+    throwWithContext "Object has no properties, cannot generate structure"
 
   -- Process each field once, collecting all info needed
   let mut allDependencies : List TypeDefinition := []

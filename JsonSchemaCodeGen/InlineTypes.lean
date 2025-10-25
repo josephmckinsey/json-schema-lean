@@ -56,7 +56,7 @@ def getBoolType (b : Bool) : String :=
 
 def isSimple (o : JsonSchema.SchemaObject) : Except String Unit := do
   if o.const.isSome then return -- constants are always simple
-  if o.ref.isSome then return -- Refs are always simple
+  if o.ref.isSome then .error "ref is not simple"
   if o.allOf.isSome then .error "allOf is not simple"
   if o.anyOf.isSome then .error "anyOf is not simple"
   if o.oneOf.isSome then .error "oneOf is not simple"
@@ -110,7 +110,9 @@ def parseConstant (o : JsonSchema.SchemaObject) : Except String TypeDefinition :
 
 def parseRef (o : JsonSchema.SchemaObject) : SchemaGen TypeDefinition :=
   match o.ref with
-  | some ref => resolveRefToName ref <&> fun name => { typeDecl := name }
+  | some ref => do
+      let name ← resolveRefToName ref
+      pure { typeDecl := name }
   | none => .error "Could not find ref"
 
 def parseAnyType (types : Array JsonSchema.JsonType) : Except String TypeDefinition :=
@@ -427,14 +429,14 @@ def parseInlineableTuple (itemSchemas : Array JsonSchema.Schema) (minItems maxIt
   -- Check that this is a fixed-length tuple
   let len := itemSchemas.size
   if len < 2 then
-    .error "Tuple must have at least 2 items"
+    throwWithContext "Tuple must have at least 2 items"
 
   match minItems, maxItems with
   | some min, some max =>
     if min != len || max != len then
-      .error s!"minItems ({min}) and maxItems ({max}) must equal items length ({len})"
+      throwWithContext s!"minItems ({min}) and maxItems ({max}) must equal items length ({len})"
   | _, _ =>
-    .error "Tuple requires both minItems and maxItems to be set"
+    throwWithContext "Tuple requires both minItems and maxItems to be set"
 
   -- Parse all item schemas
   let mut itemTypeDefsAux : List TypeDefinition := []
@@ -482,16 +484,16 @@ partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0)
   (do isSimple o; parseSimpleType o prec) <|>
   (if let some anyOf := o.anyOf then
     parseInlineableAnyOf anyOf (fun s p => parseInline s p) prec
-  else .error "no anyOf") <|>
+  else throwWithContext "no anyOf") <|>
   (if let some oneOf := o.oneOf then
     parseInlineableOneOf oneOf (fun s p => parseInline s p) prec
-  else .error "no oneOf") <|>
+  else throwWithContext "no oneOf") <|>
   (if let some (.Tuple itemSchemas) := o.items then
     parseInlineableTuple itemSchemas o.minItems o.maxItems (fun s p => parseInline s p) prec
-  else .error "no inlineable tuple") <|>
+  else throwWithContext "no inlineable tuple") <|>
   (if let some (.Single itemSchema) := o.items then
     parseInlineableArray itemSchema (fun s p => parseInline s p) prec
-  else .error "no inlineable array")
+  else throwWithContext "no inlineable array")
 
 /-- Escape doc comment terminators in a string to prevent premature closing.
     Replaces "- /"(no space) with "-\/" to avoid breaking doc comments. -/

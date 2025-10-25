@@ -30,13 +30,13 @@ def mkAbbrevTypeDefinition (s : JsonSchema.Schema) (name : String) (form : TypeD
 
 def getItemArray (s : JsonSchema.Schema) : SchemaGen ItemsSchema :=
   match s with
-  | .Boolean _ => .error "Could not parse array from bool"
+  | .Boolean _ => throwWithContext "Could not parse array from bool"
   | .Object o => withNewID s do
     if o.type != #[.ArrayType] then
-      .error s!"Could not parse array from type {o.type}"
+      throwWithContext s!"Could not parse array from type {o.type}"
     match o.items with
     | .some itemschema => pure itemschema
-    | _ => .error "Could not find item schema"
+    | _ => throwWithContext "Could not find item schema"
 
 /-- Try to parse a homogeneous array where the item type is inlineable.
 
@@ -48,7 +48,7 @@ def parseArrayAbbrev (s : JsonSchema.Schema) (name : String)
     : SchemaGen TypeDefinition := getItemArray s >>= fun itemschema => do
   let singleschema ← match itemschema with
   | (.Single singleschema) => pure singleschema
-  | _ => .error "Cannot parse array from multi-itemschema"
+  | _ => throwWithContext "Cannot parse array from multi-itemschema"
 
   let itemTypeDef ← recurse singleschema (name ++ "Items")
 
@@ -87,23 +87,23 @@ def parseTupleAbbrev (s : JsonSchema.Schema) (name : String)
   -- Extract tuple schemas
   let itemSchemas ← match itemschema with
   | (.Tuple schemas) => pure schemas
-  | _ => .error "Cannot parse tuple from non-tuple item schema"
+  | _ => throwWithContext "Cannot parse tuple from non-tuple item schema"
 
   -- Check for fixed-length tuple
   let len := itemSchemas.size
   if len < 2 then
-    .error "Tuple must have at least 2 items"
+    throwWithContext "Tuple must have at least 2 items"
 
   let obj ← match s with
   | .Object o => pure o
-  | _ => .error "Expected object schema"
+  | _ => throwWithContext "Expected object schema"
 
   match obj.minItems, obj.maxItems with
   | some min, some max =>
     if min != len || max != len then
-      .error s!"minItems ({min}) and maxItems ({max}) must equal items length ({len})"
+      throwWithContext s!"minItems ({min}) and maxItems ({max}) must equal items length ({len})"
   | _, _ =>
-    .error "Tuple requires both minItems and maxItems to be set"
+    throwWithContext "Tuple requires both minItems and maxItems to be set"
 
   -- Try to parse each item as an inline type first, falling back to named types
   let mut itemTypeDefsAux : List TypeDefinition := []

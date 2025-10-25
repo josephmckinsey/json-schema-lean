@@ -54,7 +54,8 @@ partial def flattenDependencies (typeDef : TypeDefinition) : List TypeDefinition
   nestedDeps ++ deps
 
 /-- Main schema to TypeDefinition conversion -/
-partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen TypeDefinition := do
+partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String)
+    : SchemaGen TypeDefinition := withTypeName name do
   -- We are going to ignore refs for now, which we will fill in
   -- by providing all the name ahead of time in the config,
   -- and then parsing in the correct order (+ mutual types)
@@ -62,21 +63,42 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String) : SchemaGen 
   parseTupleAbbrev s name schemaToTypeDef <|>
   parseArrayAbbrev s name schemaToTypeDef <|>
   (match s with
-   | .Object obj => withNewID s (
-     -- Try enum first
-     if let some enum := obj.enum then
-       enumToInductive enum name
-     -- Then try oneOf
-     else if let some oneOf := obj.oneOf then
-       oneOfToInductive oneOf name schemaToTypeDef
-     -- Then try anyOf (treated same as oneOf for now)
-     else if let some anyOf := obj.anyOf then
-       anyOfToInductive anyOf name schemaToTypeDef
-     -- Finally try object/structure
-     else
-       objectToStructure obj name schemaToTypeDef
-   )
-   | _ => .error "Cannot convert boolean schema to structure")
+    | .Object obj => withNewID s (
+      -- Try enum first
+      if let some enum := obj.enum then
+        enumToInductive enum name
+      -- Then try oneOf
+      else if let some oneOf := obj.oneOf then
+        oneOfToInductive oneOf name schemaToTypeDef
+      -- Then try anyOf (treated same as oneOf for now)
+      else if let some anyOf := obj.anyOf then
+        anyOfToInductive anyOf name schemaToTypeDef
+      -- Finally try object/structure
+      else
+        objectToStructure obj name schemaToTypeDef
+    )
+    | _ => throwWithContext "Cannot convert boolean schema to structure")
+
+/-- Version of schemaToTypeDef for use in mutual blocks.
+    Only generates structures and inductives (no abbreviations). -/
+partial def schemaToTypeDefMutual (s : JsonSchema.Schema) (name : String)
+    : SchemaGen TypeDefinition := withTypeName name do
+  match s with
+  | .Object obj => withNewID s (
+      -- Try enum first
+      if let some enum := obj.enum then
+        enumToInductive enum name
+      -- Then try oneOf
+      else if let some oneOf := obj.oneOf then
+        oneOfToInductive oneOf name schemaToTypeDefMutual
+      -- Then try anyOf (treated same as oneOf for now)
+      else if let some anyOf := obj.anyOf then
+        anyOfToInductive anyOf name schemaToTypeDefMutual
+      -- Finally try object/structure
+      else
+        objectToStructure obj name schemaToTypeDefMutual
+    )
+  | _ => throwWithContext "Cannot convert boolean schema to structure in mutual block"
 
 /-- Format a single TypeDefinition with optional instances based on config -/
 def formatTypeDefWithInstances (td : TypeDefinition) (config : Config) : Format :=
@@ -107,8 +129,8 @@ def generateMutualBlock (scc : Array Nat) (namedSchemas : Array SchemaID)
 
   for idx in scc do
     let schemaID := namedSchemas[idx]!
-    let schema? := ctx.resolver.getSchemaFromRoot? schemaID.baseURI schemaID.path
-    let schema ← match schema? with
+    let schemaAndURI? := ctx.resolver.getSchemaAndURI? schemaID.baseURI schemaID.path
+    let (schema, baseURI) ← match schemaAndURI? with
       | some s => .ok s
       | none => .error s!"Schema not found at {schemaID.baseURI} {schemaID.path}"
 
@@ -117,12 +139,18 @@ def generateMutualBlock (scc : Array Nat) (namedSchemas : Array SchemaID)
       | some n => .ok n
       | none => .error s!"No name found for schema {schemaID.baseURI} {schemaID.path}"
 
-    let typeDef ← (schemaToTypeDef schema name).run ctx
+    -- Use schemaToTypeDefMutual to avoid generating abbreviations in mutual blocks
+    -- Set both baseURI and currentSchemaID for error reporting
+    let typeDef ← (schemaToTypeDefMutual schema name).run {
+      ctx with
+        baseURI := baseURI
+        currentSchemaID := some schemaID
+    }
     typeDefs := typeDefs.push typeDef
 
   -- Build mutual block
   let declsWithInstances := typeDefs.map (formatTypeDefWithInstances · ctx.config)
-  .ok (.group (.nestD ("mutual\n" ++ Std.Format.joinSep declsWithInstances.toList "\n\n" ++ "\nend")))
+  .ok ("mutual\n" ++ Std.Format.joinSep declsWithInstances.toList "\n\n" ++ "\nend")
 
 /-- Generate code for all schemas in a Resolver with proper topological ordering -/
 def generateAllSchemas (resolver : Resolver) (config : Config := {}) : Except String String := do
@@ -167,7 +195,11 @@ def generateAllSchemas (resolver : Resolver) (config : Config := {}) : Except St
         | some n => .ok n
         | none => .error s!"No name found for schema {schemaID.baseURI} {schemaID.path}"
 
-      let typeDef ← (schemaToTypeDef schema name).run { ctx with baseURI := baseURI }
+      let typeDef ← (schemaToTypeDef schema name).run {
+        ctx with
+          baseURI := baseURI
+          currentSchemaID := some schemaID
+      }
 
       -- Include dependencies
       let allDeps := flattenDependencies typeDef
