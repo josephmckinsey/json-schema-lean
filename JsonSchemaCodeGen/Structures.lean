@@ -57,16 +57,18 @@ def makeOptionalFieldType (schema : JsonSchema.Schema) (parentTypeName : String)
   }
 
 /-- Build a single field declaration with optional doc comment.
-    Merges the schema's description with any extra documentation from the field's type. -/
+    Merges the schema's description with any extra documentation from the field's type.
+    If isOptional is true, adds `:= none` as default value. -/
 def mkFieldDecl (fieldName : String) (typeFormat : Std.Format) (schema : JsonSchema.Schema)
-    (extraDocComment : Option Std.Format) (config : Config) : Std.Format :=
+    (extraDocComment : Option Std.Format) (isOptional : Bool) (config : Config) : Std.Format :=
   let sanitizedName := config.sanitizeName fieldName
 
   -- Combine schema description with extra doc comment from inlined type
   let combined := combineDocStrings schema.getDocString extraDocComment
   let docComment := if combined.isEmpty then .nil else mkDocComment combined ++ "\n"
 
-  docComment ++ sanitizedName ++ " : " ++ typeFormat
+  let defaultValue := if isOptional then " := none" else ""
+  docComment ++ sanitizedName ++ " : " ++ typeFormat ++ defaultValue
 
 /-- Build FromJson instance for a structure.
     For each field, we parse it from the JSON object and use fromJson?.
@@ -161,7 +163,7 @@ partial def objectToStructure (obj : JsonSchema.SchemaObject) (typeName : String
 
     -- Build field declaration
     let fieldDecl := mkFieldDecl fieldName fieldTypeDef.typeDecl
-      fieldSchema fieldTypeDef.extraDocComment config
+      fieldSchema fieldTypeDef.extraDocComment (!required) config
     fieldDecls := fieldDecl :: fieldDecls
 
     -- Collect field info for instances

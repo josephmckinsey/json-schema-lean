@@ -147,18 +147,18 @@ def structureTests : TestM Unit := testFunction "structureTests" do
     r#"structure Person where
   name : String
   age : Int
-  email : Option String"#
+  email : Option String := none"#
 
   testEq "Struct with optional sum type" (schemaToString testStructWithOptionalSum "Record")
     r#"structure Record where
   id : Int
-  value : Option (String ⊕ Float)"#
+  value : Option (String ⊕ Float) := none"#
 
   testEq "Nested struct" (schemaToString testNestedStructSchema "Person")
     r#"structure PersonAddress where
   street : String
   city : String
-  zipCode : Option String
+  zipCode : Option String := none
 
 structure Person where
   name : String
@@ -166,8 +166,8 @@ structure Person where
 
   testEq "All optional fields" (schemaToString testAllOptionalFields "OptionalData")
     r#"structure OptionalData where
-  field1 : Option String
-  field2 : Option Int"#
+  field1 : Option String := none
+  field2 : Option Int := none"#
 
   -- Test structure with inlined anyOf field (should inline as String ⊕ Int, not generate separate type)
   let testStructWithInlinedAnyOf : JsonSchema.Schema := .Object {
@@ -413,7 +413,7 @@ def structInstanceTests : TestM Unit := testFunction "structure FromJson/ToJson 
     r#"structure Person where
   name : String
   age : Int
-  email : Option String
+  email : Option String := none
 
 instance : FromJson Person where
   fromJson? j := do
@@ -430,7 +430,7 @@ instance : ToJson Person where
     (schemaToString testStructWithOptionalSum "Record" { generateFromJson := true, generateToJson := true })
     r#"structure Record where
   id : Int
-  value : Option (String ⊕ Float)
+  value : Option (String ⊕ Float) := none
 
 instance : FromJson Record where
   fromJson? j := do
@@ -546,7 +546,7 @@ abbrev StringList := Array (String ⊕ Int)"#
     r#"structure PersonListItems where
   name : String
   age : Int
-  email : Option String
+  email : Option String := none
 
 /-- A list of people -/
 abbrev PersonList := Array PersonListItems"#
