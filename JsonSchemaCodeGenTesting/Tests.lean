@@ -682,6 +682,41 @@ def generatedCodeTests : TestM Unit := testFunction "generated code compilation 
     (toJson (TestStringOrInt.case1 123))
     (Json.num 123)
 
+def sanitizationTests : TestM Unit := testFunction "Name sanitization tests" do
+  -- Test reserved keywords that were causing issues
+  testEq "from keyword" (defaultSanitizeName "from") "from_"
+  testEq "for keyword" (defaultSanitizeName "for") "for_"
+  testEq "do keyword" (defaultSanitizeName "do") "do_"
+  testEq "repeat keyword" (defaultSanitizeName "repeat") "repeat_"
+
+  -- Test other common keywords
+  testEq "def keyword" (defaultSanitizeName "def") "def_"
+  testEq "structure keyword" (defaultSanitizeName "structure") "structure_"
+  testEq "match keyword" (defaultSanitizeName "match") "match_"
+  testEq "if keyword" (defaultSanitizeName "if") "if_"
+  testEq "let keyword" (defaultSanitizeName "let") "let_"
+  testEq "return keyword" (defaultSanitizeName "return") "return_"
+  testEq "instance keyword" (defaultSanitizeName "instance") "instance_"
+  testEq "Type keyword" (defaultSanitizeName "Type") "Type_"
+
+  -- Test that non-keywords are unchanged
+  testEq "normal name" (defaultSanitizeName "myField") "myField"
+  testEq "camelCase" (defaultSanitizeName "userName") "userName"
+  testEq "with underscore" (defaultSanitizeName "user_name") "user_name"
+
+  -- Test special character replacement
+  testEq "with spaces" (defaultSanitizeName "user name") "user_name"
+  testEq "with dashes" (defaultSanitizeName "user-name") "user_name"
+  testEq "with dots" (defaultSanitizeName "user.name") "user_name"
+
+  -- Test digit prefix handling
+  testEq "starts with digit" (defaultSanitizeName "123field") "t_123field"
+  testEq "empty string" (defaultSanitizeName "") "t_"
+
+  -- Test generics handling (A<T> → AOfT)
+  testEq "generic type" (defaultSanitizeName "A<T>") "AOfT"
+  testEq "complex generic" (defaultSanitizeName "Map<K,V>") "MapOfK_V"
+
 def allCodeGenTests : TestM Unit := group "CodeGen Tests" do
   simpleTest
   structureTests
@@ -698,6 +733,7 @@ def allCodeGenTests : TestM Unit := group "CodeGen Tests" do
   arrayTests
   tupleTests
   tupleAbbrevTests
+  sanitizationTests
 
 def hmm := Option (String ⊕ Int)
 

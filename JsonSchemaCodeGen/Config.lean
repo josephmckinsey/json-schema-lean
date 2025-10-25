@@ -28,8 +28,28 @@ def defaultSanitizeName (name : String) : String :=
     else if c == '_' then c
     else '_'
   let result := String.mk cleaned
-  -- Basic keyword avoidance (add more as needed)
-  if ["def", "theorem", "structure", "inductive", "where", "match", "if", "then", "else"].contains result
+  -- Best-effort keyword avoidance (Lean 4 has extensible syntax, so this is not exhaustive)
+  let keywords := [
+    -- Core language keywords
+    "def", "theorem", "structure", "inductive", "class", "instance", "where",
+    "match", "if", "then", "else", "let", "in", "fun", "do", "return",
+    -- Control flow and loops
+    "for", "while", "repeat", "unless", "break", "continue",
+    -- Imports and namespaces
+    "import", "open", "namespace", "section", "end", "export",
+    -- Modifiers and attributes
+    "private", "protected", "partial", "mutual", "axiom", "constant",
+    "variable", "universe", "deriving", "extends", "with",
+    -- Types and proofs
+    "Type", "Prop", "Sort", "forall", "exists",
+    -- Pattern matching
+    "have", "show", "from", "by", "at",
+    -- Other common keywords
+    "macro", "syntax", "notation", "prefix", "infix", "postfix",
+    "example", "opaque", "noncomputable", "unsafe", "extern",
+    "abbrev", "scoped", "local"
+  ]
+  if keywords.contains result
   then result ++ "_"
   else if result.isEmpty || result.front.isDigit
   then "t_" ++ result  -- Prepend if starts with digit or empty

@@ -59,7 +59,7 @@ def main (args : List String) : IO UInt32 := do
       let resolver := Resolver.empty.addSchema schema baseURI
 
       -- Generate code with instances enabled
-      let config : Config := { generateInstances := true }
+      let config : Config := { generateInstances := false }
       match generateAllSchemas resolver config with
       | .error e => do
         IO.eprintln s!"Code generation error: {e}"
@@ -80,7 +80,7 @@ def main (args : List String) : IO UInt32 := do
       let resolver := Resolver.empty.addSchema schema baseURI
 
       -- Generate code with instances enabled
-      let config : Config := { generateInstances := true }
+      let config : Config := { generateInstances := false }
       match generateAllSchemas resolver config with
       | .error e => do
         IO.eprintln s!"Code generation error: {e}"
