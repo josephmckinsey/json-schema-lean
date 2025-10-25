@@ -89,6 +89,14 @@ instance : ToJson Person where
 ./testCodeGen.sh
 ```
 
+### Known Issues
+
+The code generator works for most schemas but has some known limitations:
+
+1. **FromJson/ToJson instances may not compile**: Generated FromJson/ToJson instances work for many cases but may produce compilation errors for complex schemas with deeply nested types or certain edge cases.
+
+2. **Doc comments for inductives**: Documentation comments from schema descriptions are not always propagated correctly through inductive type definitions, particularly for nested variants.
+
 ## Testing
 
 There are some tests in `lake test`, but most validation tests rely on `bowtie`:

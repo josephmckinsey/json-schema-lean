@@ -1,6 +1,7 @@
 import JsonSchema.Schema
 import JsonSchema.Validation
 import JsonSchemaCodeGen.Config
+import JsonSchemaCodeGen.InlineTypes
 import JsonSchemaCodeGen.Abbreviations
 import JsonSchemaCodeGen.Structures
 import JsonSchemaCodeGen.Inductives
@@ -80,7 +81,9 @@ partial def schemaToTypeDef (s : JsonSchema.Schema) (name : String)
     | _ => throwWithContext "Cannot convert boolean schema to structure")
 
 /-- Version of schemaToTypeDef for use in mutual blocks.
-    Only generates structures and inductives (no abbreviations). -/
+    Only generates structures and inductives (no abbreviations).
+    For schemas that would normally be abbreviations (refs, simple types, arrays),
+    generates single-field wrapper structures. -/
 partial def schemaToTypeDefMutual (s : JsonSchema.Schema) (name : String)
     : SchemaGen TypeDefinition := withTypeName name do
   match s with
@@ -94,9 +97,12 @@ partial def schemaToTypeDefMutual (s : JsonSchema.Schema) (name : String)
       -- Then try anyOf (treated same as oneOf for now)
       else if let some anyOf := obj.anyOf then
         anyOfToInductive anyOf name schemaToTypeDefMutual
-      -- Finally try object/structure
-      else
+      -- Then try object/structure
+      else if obj.properties.isSome && !(obj.properties.getD #[]).isEmpty then
         objectToStructure obj name schemaToTypeDefMutual
+      -- For everything else (refs, simple types, etc.), use wrapper struct
+      else
+        parseWrapperStruct s name
     )
   | _ => throwWithContext "Cannot convert boolean schema to structure in mutual block"
 

@@ -153,7 +153,8 @@ partial def variantToConstructor (variant : JsonSchema.Schema) (ctorName : Strin
   | .Object obj => do
     if obj.type.contains .ObjectType && obj.properties.isSome then
       -- Multi-field constructor: | cons (head : Int) (tail : List)
-      let (args, deps, fieldInfos) ← mkConstructorArgs obj typeName schemaToTypeDef
+      -- Use typeName + ctorName as parent to avoid naming conflicts between variants
+      let (args, deps, fieldInfos) ← mkConstructorArgs obj (typeName ++ ctorName) schemaToTypeDef
       let ctorDecl := "| " ++ ctorName ++ " " ++ args
 
       -- Combine variant description with field extraDocComments

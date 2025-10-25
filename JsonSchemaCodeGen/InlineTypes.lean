@@ -495,6 +495,37 @@ partial def parseInline (s : JsonSchema.Schema) (prec : Nat := 0)
     parseInlineableArray itemSchema (fun s p => parseInline s p) prec
   else throwWithContext "no inlineable array")
 
+/-- Generate a single-field wrapper structure for schemas that would normally be abbreviations.
+    This is used in mutual blocks where abbreviations are not allowed.
+    Example: `structure TypeName where val : InnerType` -/
+partial def parseWrapperStruct (s : JsonSchema.Schema) (name : String)
+    : SchemaGen TypeDefinition := do
+  -- Try to parse the inner type as an inline type first
+  let innerTypeDef ← parseInline s max_prec
+
+  let structDecl : Format := .group (.nestD ("structure " ++ name ++ " where\nval : " ++ innerTypeDef.typeDecl))
+
+  -- Generate FromJson instance: parse inner type and wrap it
+  let fromJsonImpl : Format :=
+    if let some customParser := innerTypeDef.fromJsonImpl then
+      .group (.nestD ("do" ++ .line ++ "let val ← " ++ customParser ++ .line ++ "pure { val }"))
+    else
+      .group (.nestD ("do" ++ .line ++ "let val ← fromJson? j" ++ .line ++ "pure { val }"))
+
+  -- Generate ToJson instance: unwrap and serialize
+  let toJsonImpl : Format :=
+    if let some customSerializer := innerTypeDef.toJsonImpl then
+      "let x := x.val\n" ++  customSerializer
+    else
+      "toJson x.val"
+
+  pure {
+    typeDecl := structDecl
+    fromJsonImpl := some fromJsonImpl
+    toJsonImpl := some toJsonImpl
+    dependencies := innerTypeDef.dependencies
+  }
+
 /-- Escape doc comment terminators in a string to prevent premature closing.
     Replaces "- /"(no space) with "-\/" to avoid breaking doc comments. -/
 def escapeDocComment (s : Format) : Format :=
