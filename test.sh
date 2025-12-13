@@ -11,29 +11,29 @@ run_test() {
     fi
 }
 
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/const.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/enum.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maximum.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minimum.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/exclusiveMaximum.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/exclusiveMinimum.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maxLength.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minLength.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/required.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/multipleOf.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/type.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/boolean_schema.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/allOf.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/anyOf.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/oneOf.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/not.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/contains.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maxItems.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minItems.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/maxProperties.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/minProperties.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/additionalItems.json
-run_test https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7/if-then-else.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/const.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/enum.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/maximum.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/minimum.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/exclusiveMaximum.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/exclusiveMinimum.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/maxLength.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/minLength.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/required.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/multipleOf.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/type.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/boolean_schema.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/allOf.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/anyOf.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/oneOf.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/not.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/contains.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/maxItems.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/minItems.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/maxProperties.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/minProperties.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/additionalItems.json
+run_test ./JSON-Schema-Test-Suite/tests/draft7/if-then-else.json
 
 if [ $FAILED -eq 1 ]; then
     echo "Some tests failed!" >&2
@@ -41,4 +41,4 @@ if [ $FAILED -eq 1 ]; then
 fi
 
 echo "Running Full Test Suite (with other features)"
-bowtie suite -i localhost/lean-jsonschema:latest https://github.com/json-schema-org/JSON-Schema-Test-Suite/blob/main/tests/draft7 | bowtie summary --show failures || true
+bowtie suite -i localhost/lean-jsonschema:latest ./JSON-Schema-Test-Suite/tests/draft7 | bowtie summary --show failures || true

@@ -22,4 +22,5 @@ jobs:
     
     - name: Run Bowtie tests
       run: |
+        git clone https://github.com/json-schema-org/JSON-Schema-Test-Suite/
         bash test.sh
